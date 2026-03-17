@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tracebit Caltrops 3D Visualizer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      height: 100%;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      background: #000;
+      color: #fff;
+      display: flex;
+    }
+    #app {
+      display: flex;
+      width: 100%;
+      height: 100%;
+    }
+    #canvas-container {
+      flex: 1 1 auto;
+      position: relative;
+      min-height: 100vh;
+    }
+    #canvas-container canvas {
+      display: block;
+    }
+    #controls {
+      width: 260px;
+      padding: 16px 18px;
+      border-left: 1px solid #222;
+      background: #050505;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    h1 {
+      font-size: 16px;
+      margin-bottom: 4px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .subhead {
+      font-size: 11px;
+      color: #aaa;
+      line-height: 1.4;
+    }
+    .section {
+      border-top: 1px solid #222;
+      padding-top: 12px;
+    }
+    .section:first-of-type {
+      border-top: none;
+      padding-top: 0;
+    }
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 8px;
+      color: #bbb;
+    }
+    .control-group {
+      margin-bottom: 10px;
+    }
+    .control-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    .control-label-row span.value {
+      color: #bbb;
+      font-variant-numeric: tabular-nums;
+    }
+    input[type="range"] {
+      width: 100%;
+      -webkit-appearance: none;
+      background: transparent;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 3px;
+      background: #333;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #fff;
+      margin-top: -3.5px;
+    }
+    input[type="range"]::-moz-range-track {
+      height: 3px;
+      background: #333;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+    }
+    button {
+      padding: 6px 8px;
+      font-size: 11px;
+      border-radius: 2px;
+      border: 1px solid #333;
+      background: #111;
+      color: #eee;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #181818;
+    }
+    button.primary {
+      border-color: #fff;
+    }
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .seed-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .seed-value {
+      font-variant-numeric: tabular-nums;
+    }
+    .seed-input-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .seed-input-row input {
+      flex: 1 1 auto;
+      padding: 3px 4px;
+      font-size: 11px;
+      background: #050505;
+      border: 1px solid #333;
+      color: #eee;
+    }
+    .hint {
+      font-size: 10px;
+      color: #777;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="canvas-container"></div>
+    <div id="controls">
+      <div class="section">
+        <h1>Tracebit Caltrops</h1>
+        <div class="subhead">
+          3‑axis caltrop logo explorer. Flat, graphic rendering for variable mark development.
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Arms (Axis Length)</div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>X Axis</span>
+            <span class="value" id="lenX-value"></span>
+          </div>
+          <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.0" />
+        </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>Y Axis</span>
+            <span class="value" id="lenY-value"></span>
+          </div>
+          <input id="lenY" type="range" min="0.2" max="2.0" step="0.01" value="1.0" />
+        </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>Z Axis</span>
+            <span class="value" id="lenZ-value"></span>
+          </div>
+          <input id="lenZ" type="range" min="0.2" max="2.0" step="0.01" value="1.0" />
+        </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>Line Thickness</span>
+            <span class="value" id="thickness-value"></span>
+          </div>
+          <input id="thickness" type="range" min="0.05" max="0.3" step="0.005" value="0.12" />
+        </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>Center Sphere</span>
+            <span class="value" id="sphereRadius-value"></span>
+          </div>
+          <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.17" />
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Pose, Caps & Motion</div>
+        <div class="button-row" style="margin-bottom:8px;">
+          <button id="resetPose">Reset Pose</button>
+          <button id="isometricPose">Isometric</button>
+        </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>End Caps</span>
+          </div>
+          <div class="button-row" style="margin-bottom:8px;">
+            <button id="capsFlat">Flat</button>
+            <button id="capsRounded">Rounded</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>Auto Rotate</span>
+          </div>
+          <div class="button-row">
+            <button id="autoRotateToggle">Off</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Variation (Seed)</div>
+        <div class="seed-row">
+          <span>Seed</span>
+          <span class="seed-value" id="seed-display"></span>
+        </div>
+        <div class="button-row">
+          <button id="seedPrev">&minus;</button>
+          <button id="seedNext">+</button>
+          <button id="seedRandom">Random</button>
+        </div>
+        <div class="seed-input-row">
+          <input id="seedInput" type="number" placeholder="Jump to seed…" />
+          <button id="seedGo">Go</button>
+        </div>
+        <p class="hint">
+          Seeds remap the three axis lengths within the current ranges. All seeds are deterministic.
+        </p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Export</div>
+        <div class="button-row">
+          <button id="downloadPng" class="primary">Download PNG</button>
+        </div>
+        <p class="hint">
+          Uses the current pose and lengths. Ideal for capturing candidate variable marks.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main visualizer logic as ES module -->
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
+
