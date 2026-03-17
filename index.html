@@ -180,7 +180,7 @@
             <span>X Axis</span>
             <span class="value" id="lenX-value"></span>
           </div>
-          <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.24" />
+          <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.5" />
         </div>
         <div class="control-group">
           <div class="control-label-row">
@@ -208,7 +208,7 @@
             <span>Center Sphere</span>
             <span class="value" id="sphereRadius-value"></span>
           </div>
-          <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.14" />
+          <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.12" />
         </div>
       </div>
 
@@ -235,12 +235,20 @@
             <button id="autoRotateToggle">Off</button>
           </div>
         </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>Auto Length</span>
+          </div>
+          <div class="button-row">
+            <button id="autoLengthToggle">Off</button>
+          </div>
+        </div>
       </div>
 
       <div class="section">
         <div class="section-title">Variation (Seed)</div>
         <div class="seed-row">
-          <span>Seed</span>
+          <span>Length Seed</span>
           <span class="seed-value" id="seed-display"></span>
         </div>
         <div class="button-row">
@@ -252,8 +260,15 @@
           <input id="seedInput" type="number" placeholder="Jump to seed…" />
           <button id="seedGo">Go</button>
         </div>
+        <div class="seed-row" style="margin-top:10px;">
+          <span>Rotation Seed</span>
+          <span class="seed-value" id="rotSeed-display"></span>
+        </div>
+        <div class="button-row">
+          <button id="rotSeedRandom">Random Rotation</button>
+        </div>
         <p class="hint">
-          Seeds remap the three axis lengths within the current ranges. All seeds are deterministic.
+          Seeds remap arm lengths and rotation deterministically within the configured ranges.
         </p>
       </div>
 

@@ -7,14 +7,18 @@ let scene, camera, renderer, controls;
 let caltrop;
 
 const state = {
-  lenX: 1.24,
+  lenX: 1.5,
   lenY: 1.09,
   lenZ: 1.09,
   thickness: 0.08,
-  sphereRadius: 0.14,
+  sphereRadius: 0.12,
   autoRotate: false,
+  autoLength: false,
   endCaps: "flat", // flat | rounded
-  seed: 1
+  seed: 1,
+  rotSeed: 1,
+  rotSpeed: 1.0,
+  rotTilt: 0.6
 };
 
 function init() {
@@ -203,9 +207,23 @@ function animate() {
   requestAnimationFrame(animate);
 
   if (state.autoRotate && caltrop) {
-    const t = performance.now() * 0.0003;
+    const t = performance.now() * 0.0003 * state.rotSpeed;
     caltrop.rotation.y = t;
-    caltrop.rotation.x = t * 0.6;
+    caltrop.rotation.x = t * state.rotTilt;
+  }
+
+   if (state.autoLength) {
+    const t = performance.now() * 0.0005;
+    const baseX = 1.24;
+    const baseY = 1.09;
+    const baseZ = 1.09;
+    const amp = 0.35;
+
+    state.lenX = baseX + Math.sin(t * 1.0) * amp;
+    state.lenY = baseY + Math.sin(t * 1.7 + 1.2) * amp;
+    state.lenZ = baseZ + Math.sin(t * 2.3 + 2.4) * amp;
+
+    applyStateToCaltrop();
   }
 
   if (controls && typeof controls.update === "function") {
@@ -229,6 +247,7 @@ function initUI() {
   const sphereRadiusValue = document.getElementById("sphereRadius-value");
 
   const autoRotateToggle = document.getElementById("autoRotateToggle");
+  const autoLengthToggle = document.getElementById("autoLengthToggle");
   const resetPoseBtn = document.getElementById("resetPose");
   const isoPoseBtn = document.getElementById("isometricPose");
 
@@ -241,6 +260,9 @@ function initUI() {
   const seedRandom = document.getElementById("seedRandom");
   const seedInput = document.getElementById("seedInput");
   const seedGo = document.getElementById("seedGo");
+
+  const rotSeedDisplay = document.getElementById("rotSeed-display");
+  const rotSeedRandom = document.getElementById("rotSeedRandom");
 
   const downloadPngBtn = document.getElementById("downloadPng");
   const downloadSvgBtn = document.getElementById("downloadSvg");
@@ -264,6 +286,10 @@ function initUI() {
 
   function updateSeedDisplay() {
     seedDisplay.textContent = state.seed.toString();
+  }
+
+  function updateRotSeedDisplay() {
+    rotSeedDisplay.textContent = state.rotSeed.toString();
   }
 
   lenXInput.addEventListener("input", () => {
@@ -297,6 +323,11 @@ function initUI() {
   autoRotateToggle.addEventListener("click", () => {
     state.autoRotate = !state.autoRotate;
     autoRotateToggle.textContent = state.autoRotate ? "On" : "Off";
+  });
+
+  autoLengthToggle.addEventListener("click", () => {
+    state.autoLength = !state.autoLength;
+    autoLengthToggle.textContent = state.autoLength ? "On" : "Auto Length";
   });
 
   resetPoseBtn.addEventListener("click", () => {
@@ -369,6 +400,13 @@ function initUI() {
     }
   });
 
+  rotSeedRandom.addEventListener("click", () => {
+    const randomSeed = Math.floor(Math.random() * 100000) + 1;
+    state.rotSeed = randomSeed;
+    applyRotationSeed(state.rotSeed);
+    updateRotSeedDisplay();
+  });
+
   downloadPngBtn.addEventListener("click", () => {
     const link = document.createElement("a");
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -402,6 +440,7 @@ function initUI() {
   });
 
   updateSeedDisplay();
+  updateRotSeedDisplay();
   syncSliders();
   updateCapsButtons();
 }
@@ -427,6 +466,19 @@ function applySeed(seed) {
   state.lenZ = min + (max - min) * rand();
 
   applyStateToCaltrop();
+}
+
+function applyRotationSeed(seed) {
+  const rand = mulberry32(seed);
+
+  // Random but controlled static pose so seeds are reproducible
+  const ax = (rand() - 0.5) * Math.PI * 1.2;
+  const ay = (rand() - 0.5) * Math.PI * 2.0;
+  const az = (rand() - 0.5) * Math.PI * 0.4;
+
+  if (caltrop) {
+    caltrop.rotation.set(ax, ay, az);
+  }
 }
 
 window.addEventListener("DOMContentLoaded", init);
