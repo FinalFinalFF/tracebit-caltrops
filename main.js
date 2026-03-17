@@ -93,9 +93,36 @@ function createCaltrop() {
   sphere.name = "weldSphere";
   group.add(sphere);
 
+  // Billboard end caps: six camera-facing planes, one at each arm end.
+  const endCaps = [];
+  const capThickness = armThickness * 1.05;
+  const capLength = armThickness * 1.6;
+  const capGeometry = new THREE.PlaneGeometry(capLength, capThickness);
+
+  const axes = [
+    { axis: "x", dir: "positive" },
+    { axis: "x", dir: "negative" },
+    { axis: "y", dir: "positive" },
+    { axis: "y", dir: "negative" },
+    { axis: "z", dir: "positive" },
+    { axis: "z", dir: "negative" }
+  ];
+
+  axes.forEach(({ axis, dir }) => {
+    const cap = new THREE.Mesh(capGeometry, material);
+    cap.userData.isBillboardCap = true;
+    cap.userData.axis = axis;
+    cap.userData.dir = dir;
+    // Billboard caps live at world level so they don't inherit the caltrop's
+    // rotation; we position them manually each frame.
+    scene.add(cap);
+    endCaps.push(cap);
+  });
+
   group.userData = {
     armLengthBase,
-    armThicknessBase: armThickness
+    armThicknessBase: armThickness,
+    endCaps
   };
 
   updateEndCaps(group);
@@ -121,6 +148,41 @@ function applyStateToCaltrop() {
 
   updateEndCaps(caltrop);
 
+  // Update billboard cap positions to sit at the current arm tips (in world
+  // space, since caps are parented to the scene to avoid inheriting rotation).
+  const endCaps = caltrop.userData.endCaps || [];
+  const armLengthBase = caltrop.userData.armLengthBase || 1.0;
+  const baseThickness = caltrop.userData.armThicknessBase || 0.12;
+  const thicknessScale = state.thickness / baseThickness;
+
+  endCaps.forEach((cap) => {
+    const axis = cap.userData.axis;
+    const dir = cap.userData.dir;
+    if (!axis || !dir) return;
+
+    let lengthScale = 1.0;
+    if (axis === "x") lengthScale = state.lenX;
+    if (axis === "y") lengthScale = state.lenY;
+    if (axis === "z") lengthScale = state.lenZ;
+
+    const halfLength = (armLengthBase * lengthScale) / 2;
+    const sign = dir === "positive" ? 1 : -1;
+    const offsetAlongAxis = halfLength * sign;
+
+    const local = new THREE.Vector3(0, 0, 0);
+    if (axis === "x") local.x = offsetAlongAxis;
+    if (axis === "y") local.y = offsetAlongAxis;
+    if (axis === "z") local.z = offsetAlongAxis;
+
+    caltrop.localToWorld(local);
+    cap.position.copy(local);
+
+    // Match cap thickness scale to bar thickness so the rectangle visually
+    // aligns with the bar cross-section.
+    const capScale = thicknessScale;
+    cap.scale.set(1, capScale, 1);
+  });
+
   if (weldSphere) {
     const baseRadius = 0.17;
     const radiusScale = state.sphereRadius / baseRadius;
@@ -129,10 +191,16 @@ function applyStateToCaltrop() {
 }
 
 function updateEndCaps(group) {
+  // Toggle billboard caps visibility based on mode.
+  const endCaps = group.userData.endCaps || [];
+  endCaps.forEach((cap) => {
+    cap.visible = state.endCaps === "flat";
+  });
+
   // Remove existing rounded caps
   const toRemove = [];
   group.traverse((child) => {
-    if (child.userData && child.userData.isEndCap) {
+    if (child.userData && child.userData.isRoundedCap) {
       toRemove.push(child);
     }
   });
@@ -170,7 +238,7 @@ function updateEndCaps(group) {
 
     ["positive", "negative"].forEach((dir) => {
       const cap = new THREE.Mesh(sphereGeom, material);
-      cap.userData.isEndCap = true;
+      cap.userData.isRoundedCap = true;
 
       cap.position.set(0, 0, 0);
       // Sink almost the entire sphere into the bar so only a slight rounding
@@ -252,6 +320,14 @@ function animate() {
       if (thicknessValue) thicknessValue.textContent = state.thickness.toFixed(3);
       if (sphereRadiusValue) sphereRadiusValue.textContent = state.sphereRadius.toFixed(3);
     }
+  }
+
+  // Make billboard caps face the camera so they always appear as flat, 2D ends.
+  if (caltrop && caltrop.userData.endCaps) {
+    caltrop.userData.endCaps.forEach((cap) => {
+      if (!cap.visible) return;
+      cap.quaternion.copy(camera.quaternion);
+    });
   }
 
   if (controls && typeof controls.update === "function") {
