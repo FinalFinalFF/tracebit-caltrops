@@ -1,6 +1,7 @@
 // Tracebit Caltrops 3D Visualizer — Three.js from local vendor/ (github.com/mrdoob/three.js)
 import * as THREE from "three";
 import { OrbitControls } from "./vendor/OrbitControls.js";
+import { SVGRenderer } from "./vendor/SVGRenderer.js";
 
 let scene, camera, renderer, controls;
 let caltrop;
@@ -242,6 +243,7 @@ function initUI() {
   const seedGo = document.getElementById("seedGo");
 
   const downloadPngBtn = document.getElementById("downloadPng");
+  const downloadSvgBtn = document.getElementById("downloadSvg");
 
   function updateLengthDisplays() {
     lenXValue.textContent = state.lenX.toFixed(2);
@@ -373,6 +375,30 @@ function initUI() {
     link.download = `tracebit-caltrop-${state.seed}-${timestamp}.png`;
     link.href = renderer.domElement.toDataURL("image/png");
     link.click();
+  });
+
+  downloadSvgBtn.addEventListener("click", () => {
+    const width = renderer.domElement.width;
+    const height = renderer.domElement.height;
+
+    const svgRenderer = new SVGRenderer();
+    svgRenderer.setSize(width, height);
+    svgRenderer.setClearColor(0x000000, 1);
+    svgRenderer.render(scene, camera);
+
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(svgRenderer.domElement);
+
+    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    link.download = `tracebit-caltrop-${state.seed}-${timestamp}.svg`;
+    link.href = url;
+    link.click();
+
+    URL.revokeObjectURL(url);
   });
 
   updateSeedDisplay();

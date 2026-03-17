@@ -261,6 +261,7 @@
         <div class="section-title">Export</div>
         <div class="button-row">
           <button id="downloadPng" class="primary">Download PNG</button>
+          <button id="downloadSvg">Download SVG</button>
         </div>
         <p class="hint">
           Uses the current pose and lengths. Ideal for capturing candidate variable marks.
@@ -269,7 +270,7 @@
     </div>
   </div>
 
-  <!-- Three.js and OrbitControls from local vendor/ (from github.com/mrdoob/three.js) -->
+  <!-- Three.js and OrbitControls from local vendor/ (github.com/mrdoob/three.js). Import map must come before the module script. -->
   <script type="importmap">
     {
       "imports": {
@@ -277,7 +278,7 @@
       }
     }
   </script>
-  <script type="module" src="./main.js"></script>
+  <script type="module" src="./main.js?v=2"></script>
 </body>
 </html>
 
