@@ -1,8 +1,8 @@
-import * as THREE from "https://cdn.skypack.dev/three@0.164.1";
-import { OrbitControls } from "https://cdn.skypack.dev/three@0.164.1/examples/jsm/controls/OrbitControls.js";
-
 // Tracebit Caltrops 3D Visualizer
 // Three axis-aligned arms with flat graphic rendering.
+
+// THREE and OrbitControls are loaded globally via script tags in index.html
+const OrbitControls = THREE.OrbitControls;
 
 let scene, camera, renderer, controls;
 let caltrop;
