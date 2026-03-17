@@ -12,8 +12,8 @@ const state = {
   lenZ: 1.09,
   thickness: 0.08,
   sphereRadius: 0.12,
-  autoRotate: false,
-  autoLength: false,
+  autoRotate: true,
+  autoLength: true,
   endCaps: "flat", // flat | rounded
   seed: 1,
   rotSeed: 1,
@@ -212,7 +212,7 @@ function animate() {
     caltrop.rotation.x = t * state.rotTilt;
   }
 
-   if (state.autoLength) {
+  if (state.autoLength) {
     const t = performance.now() * 0.0005;
     const baseX = 1.24;
     const baseY = 1.09;
@@ -224,6 +224,34 @@ function animate() {
     state.lenZ = baseZ + Math.sin(t * 2.3 + 2.4) * amp;
 
     applyStateToCaltrop();
+
+    // Keep UI sliders and numeric labels in sync with animated lengths
+    if (state._ui) {
+      const {
+        lenXInput,
+        lenYInput,
+        lenZInput,
+        thicknessInput,
+        sphereRadiusInput,
+        lenXValue,
+        lenYValue,
+        lenZValue,
+        thicknessValue,
+        sphereRadiusValue
+      } = state._ui;
+
+      if (lenXInput) lenXInput.value = state.lenX.toString();
+      if (lenYInput) lenYInput.value = state.lenY.toString();
+      if (lenZInput) lenZInput.value = state.lenZ.toString();
+      if (thicknessInput) thicknessInput.value = state.thickness.toString();
+      if (sphereRadiusInput) sphereRadiusInput.value = state.sphereRadius.toString();
+
+      if (lenXValue) lenXValue.textContent = state.lenX.toFixed(2);
+      if (lenYValue) lenYValue.textContent = state.lenY.toFixed(2);
+      if (lenZValue) lenZValue.textContent = state.lenZ.toFixed(2);
+      if (thicknessValue) thicknessValue.textContent = state.thickness.toFixed(3);
+      if (sphereRadiusValue) sphereRadiusValue.textContent = state.sphereRadius.toFixed(3);
+    }
   }
 
   if (controls && typeof controls.update === "function") {
@@ -266,6 +294,24 @@ function initUI() {
 
   const downloadPngBtn = document.getElementById("downloadPng");
   const downloadSvgBtn = document.getElementById("downloadSvg");
+
+  // Cache UI elements on state so animation can keep sliders in sync
+  state._ui = {
+    lenXInput,
+    lenYInput,
+    lenZInput,
+    thicknessInput,
+    sphereRadiusInput,
+    lenXValue,
+    lenYValue,
+    lenZValue,
+    thicknessValue,
+    sphereRadiusValue
+  };
+  function updateAutoButtons() {
+    autoRotateToggle.textContent = state.autoRotate ? "On" : "Off";
+    autoLengthToggle.textContent = state.autoLength ? "On" : "Off";
+  }
 
   function updateLengthDisplays() {
     lenXValue.textContent = state.lenX.toFixed(2);
@@ -322,12 +368,12 @@ function initUI() {
 
   autoRotateToggle.addEventListener("click", () => {
     state.autoRotate = !state.autoRotate;
-    autoRotateToggle.textContent = state.autoRotate ? "On" : "Off";
+    updateAutoButtons();
   });
 
   autoLengthToggle.addEventListener("click", () => {
     state.autoLength = !state.autoLength;
-    autoLengthToggle.textContent = state.autoLength ? "On" : "Auto Length";
+    updateAutoButtons();
   });
 
   resetPoseBtn.addEventListener("click", () => {
@@ -441,6 +487,7 @@ function initUI() {
 
   updateSeedDisplay();
   updateRotSeedDisplay();
+  updateAutoButtons();
   syncSliders();
   updateCapsButtons();
 }
