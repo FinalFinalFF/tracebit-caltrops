@@ -1,8 +1,11 @@
-// Tracebit Caltrops 3D Visualizer
-// Three axis-aligned arms with flat graphic rendering.
-
-// THREE and OrbitControls are loaded globally via script tags in index.html
-const OrbitControls = THREE.OrbitControls;
+// Tracebit Caltrops 3D Visualizer — uses global THREE from script tags in index.html
+(function () {
+  "use strict";
+  if (typeof THREE === "undefined") {
+    console.error("THREE is not defined. Load three.min.js before main.js.");
+    return;
+  }
+  var OrbitControls = THREE.OrbitControls;
 
 let scene, camera, renderer, controls;
 let caltrop;
@@ -408,3 +411,4 @@ function applySeed(seed) {
 
 window.addEventListener("DOMContentLoaded", init);
 
+})();

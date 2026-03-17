@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>Tracebit Caltrops 3D Visualizer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>" />
   <style>
     * {
       box-sizing: border-box;
@@ -268,7 +269,7 @@
     </div>
   </div>
 
-  <!-- Three.js + controls from CDN, then main logic using globals -->
+  <!-- Three.js (global THREE) then OrbitControls, then app. Order matters. -->
   <script src="https://unpkg.com/three@0.164.1/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.164.1/examples/js/controls/OrbitControls.js"></script>
   <script src="./main.js"></script>
