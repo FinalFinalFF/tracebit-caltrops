@@ -180,35 +180,35 @@
             <span>X Axis</span>
             <span class="value" id="lenX-value"></span>
           </div>
-          <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.0" />
+          <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.24" />
         </div>
         <div class="control-group">
           <div class="control-label-row">
             <span>Y Axis</span>
             <span class="value" id="lenY-value"></span>
           </div>
-          <input id="lenY" type="range" min="0.2" max="2.0" step="0.01" value="1.0" />
+          <input id="lenY" type="range" min="0.2" max="2.0" step="0.01" value="1.09" />
         </div>
         <div class="control-group">
           <div class="control-label-row">
             <span>Z Axis</span>
             <span class="value" id="lenZ-value"></span>
           </div>
-          <input id="lenZ" type="range" min="0.2" max="2.0" step="0.01" value="1.0" />
+          <input id="lenZ" type="range" min="0.2" max="2.0" step="0.01" value="1.09" />
         </div>
         <div class="control-group">
           <div class="control-label-row">
             <span>Line Thickness</span>
             <span class="value" id="thickness-value"></span>
           </div>
-          <input id="thickness" type="range" min="0.05" max="0.3" step="0.005" value="0.12" />
+          <input id="thickness" type="range" min="0.05" max="0.3" step="0.005" value="0.08" />
         </div>
         <div class="control-group">
           <div class="control-label-row">
             <span>Center Sphere</span>
             <span class="value" id="sphereRadius-value"></span>
           </div>
-          <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.17" />
+          <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.14" />
         </div>
       </div>
 
@@ -269,10 +269,15 @@
     </div>
   </div>
 
-  <!-- Three.js (global THREE) then OrbitControls, then app. Order matters. -->
-  <script src="https://unpkg.com/three@0.164.1/build/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.164.1/examples/js/controls/OrbitControls.js"></script>
-  <script src="./main.js"></script>
+  <!-- Three.js and OrbitControls from local vendor/ (from github.com/mrdoob/three.js) -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.min.js"
+      }
+    }
+  </script>
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
 

@@ -1,21 +1,16 @@
-// Tracebit Caltrops 3D Visualizer — uses global THREE from script tags in index.html
-(function () {
-  "use strict";
-  if (typeof THREE === "undefined") {
-    console.error("THREE is not defined. Load three.min.js before main.js.");
-    return;
-  }
-  var OrbitControls = THREE.OrbitControls;
+// Tracebit Caltrops 3D Visualizer — Three.js from local vendor/ (github.com/mrdoob/three.js)
+import * as THREE from "three";
+import { OrbitControls } from "./vendor/OrbitControls.js";
 
 let scene, camera, renderer, controls;
 let caltrop;
 
 const state = {
-  lenX: 1.0,
-  lenY: 1.0,
-  lenZ: 1.0,
-  thickness: 0.12,
-  sphereRadius: 0.17,
+  lenX: 1.24,
+  lenY: 1.09,
+  lenZ: 1.09,
+  thickness: 0.08,
+  sphereRadius: 0.14,
   autoRotate: false,
   endCaps: "flat", // flat | rounded
   seed: 1
@@ -380,7 +375,6 @@ function initUI() {
     link.click();
   });
 
-  applySeed(state.seed);
   updateSeedDisplay();
   syncSliders();
   updateCapsButtons();
@@ -410,5 +404,3 @@ function applySeed(seed) {
 }
 
 window.addEventListener("DOMContentLoaded", init);
-
-})();
