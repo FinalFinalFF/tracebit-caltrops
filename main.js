@@ -1,5 +1,5 @@
-import * as THREE from "./three.js/build/three.module.js";
-import { OrbitControls } from "./three.js/examples/jsm/controls/OrbitControls.js";
+import * as THREE from "https://unpkg.com/three@0.164.1/build/three.module.js";
+import { OrbitControls } from "https://unpkg.com/three@0.164.1/examples/jsm/controls/OrbitControls.js";
 
 // Tracebit Caltrops 3D Visualizer
 // Three axis-aligned arms with flat graphic rendering.
