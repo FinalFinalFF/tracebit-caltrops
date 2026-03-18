@@ -183,6 +183,28 @@
             <button id="autoLengthToggle">On</button>
           </div>
         </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>Laser Guides</span>
+          </div>
+          <div class="button-row">
+            <button id="laserGuidesToggle">Off</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>Guide Thickness</span>
+            <span class="value" id="laserGuideThickness-value"></span>
+          </div>
+          <input id="laserGuideThickness" type="range" min="0.002" max="0.04" step="0.001" value="0.01" />
+        </div>
+        <div class="control-group">
+          <div class="control-label-row">
+            <span>Guide Opacity</span>
+            <span class="value" id="laserGuideOpacity-value"></span>
+          </div>
+          <input id="laserGuideOpacity" type="range" min="0.1" max="1.0" step="0.01" value="0.95" />
+        </div>
       </div>
 
       <div class="section">
@@ -233,7 +255,7 @@
       }
     }
   </script>
-  <script type="module" src="./main-lines.js?v=4"></script>
+  <script type="module" src="./main-lines.js?v=6"></script>
 </body>
 </html>
 

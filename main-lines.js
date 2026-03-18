@@ -7,12 +7,18 @@ let scene, camera, renderer, controls;
 let caltropGroup; // rotation tracker only — no visible children
 let centerDisc;
 let armMeshX, armMeshY, armMeshZ;
+let guideMeshX, guideMeshY, guideMeshZ;
 
 const ARM_LOCAL_DIRS = [
   new THREE.Vector3(1, 0, 0),
   new THREE.Vector3(0, 1, 0),
   new THREE.Vector3(0, 0, 1),
 ];
+
+const LASER_GUIDE_COLOR = 0xffffff;
+const LASER_GUIDE_DEFAULT_THICKNESS = 0.01;
+const LASER_GUIDE_DEFAULT_OPACITY = 0.95;
+const LASER_GUIDE_EPS = 1e-6;
 
 const state = {
   lenX: 1.5,
@@ -22,6 +28,9 @@ const state = {
   sphereRadius: 0.12,
   autoRotate: true,
   autoLength: true,
+  showLaserGuides: false,
+  laserGuideThickness: LASER_GUIDE_DEFAULT_THICKNESS,
+  laserGuideOpacity: LASER_GUIDE_DEFAULT_OPACITY,
   seed: 1,
   rotSeed: 1
 };
@@ -63,6 +72,15 @@ function init() {
   armMeshX = createArmRect();
   armMeshY = createArmRect();
   armMeshZ = createArmRect();
+  guideMeshX = createGuideRect();
+  guideMeshY = createGuideRect();
+  guideMeshZ = createGuideRect();
+  guideMeshX.visible = false;
+  guideMeshY.visible = false;
+  guideMeshZ.visible = false;
+  scene.add(guideMeshX);
+  scene.add(guideMeshY);
+  scene.add(guideMeshZ);
   scene.add(armMeshX);
   scene.add(armMeshY);
   scene.add(armMeshZ);
@@ -91,6 +109,32 @@ function createCenterDisc() {
   return mesh;
 }
 
+function createGuideRect() {
+  const geom = new THREE.PlaneGeometry(1, 1);
+  const mat = new THREE.MeshBasicMaterial({
+    color: LASER_GUIDE_COLOR,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: state.laserGuideOpacity,
+    depthWrite: false,
+  });
+  return new THREE.Mesh(geom, mat);
+}
+
+function distanceToViewportEdge(directionX, directionY, halfWidth, halfHeight) {
+  const maxX = Math.abs(directionX) > LASER_GUIDE_EPS ? halfWidth / Math.abs(directionX) : Infinity;
+  const maxY = Math.abs(directionY) > LASER_GUIDE_EPS ? halfHeight / Math.abs(directionY) : Infinity;
+  return Math.min(maxX, maxY);
+}
+
+function updateGuideMaterialVisuals() {
+  [guideMeshX, guideMeshY, guideMeshZ].forEach((guide) => {
+    if (!guide || !guide.material) return;
+    guide.material.opacity = state.laserGuideOpacity;
+    guide.material.needsUpdate = true;
+  });
+}
+
 // Project each arm's 3D direction onto the camera plane, then orient
 // camera-facing rectangles along the resulting 2D directions.
 function updateArmProjections() {
@@ -102,14 +146,16 @@ function updateArmProjections() {
   camera.matrixWorld.extractBasis(camRight, camUp, camFwd);
 
   const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(caltropGroup.rotation);
+  const halfWidth = (camera.right - camera.left) * 0.5;
+  const halfHeight = (camera.top - camera.bottom) * 0.5;
 
   const arms = [
-    { mesh: armMeshX, dir: ARM_LOCAL_DIRS[0], len: state.lenX },
-    { mesh: armMeshY, dir: ARM_LOCAL_DIRS[1], len: state.lenY },
-    { mesh: armMeshZ, dir: ARM_LOCAL_DIRS[2], len: state.lenZ },
+    { mesh: armMeshX, guide: guideMeshX, dir: ARM_LOCAL_DIRS[0], len: state.lenX },
+    { mesh: armMeshY, guide: guideMeshY, dir: ARM_LOCAL_DIRS[1], len: state.lenY },
+    { mesh: armMeshZ, guide: guideMeshZ, dir: ARM_LOCAL_DIRS[2], len: state.lenZ },
   ];
 
-  arms.forEach(({ mesh, dir, len }) => {
+  arms.forEach(({ mesh, guide, dir, len }) => {
     const worldDir = dir.clone().applyMatrix4(rotMatrix);
 
     const px = worldDir.dot(camRight);
@@ -124,6 +170,22 @@ function updateArmProjections() {
 
     mesh.scale.set(projectedLen, state.thickness, 1);
     mesh.position.set(0, 0, 0);
+
+    if (guide) {
+      if (state.showLaserGuides && projFactor > LASER_GUIDE_EPS) {
+        const dirX = px / projFactor;
+        const dirY = py / projFactor;
+        const halfGuideLength = distanceToViewportEdge(dirX, dirY, halfWidth, halfHeight);
+        const fullGuideLength = halfGuideLength * 2;
+        guide.visible = true;
+        guide.quaternion.copy(camera.quaternion);
+        guide.rotateZ(angle);
+        guide.scale.set(fullGuideLength, Math.max(state.laserGuideThickness, 0.001), 1);
+        guide.position.set(0, 0, 0);
+      } else {
+        guide.visible = false;
+      }
+    }
   });
 
   if (centerDisc) {
@@ -196,14 +258,19 @@ function initUI() {
   const lenZInput = document.getElementById("lenZ");
   const thicknessInput = document.getElementById("thickness");
   const sphereRadiusInput = document.getElementById("sphereRadius");
+  const laserGuideThicknessInput = document.getElementById("laserGuideThickness");
+  const laserGuideOpacityInput = document.getElementById("laserGuideOpacity");
   const lenXValue = document.getElementById("lenX-value");
   const lenYValue = document.getElementById("lenY-value");
   const lenZValue = document.getElementById("lenZ-value");
   const thicknessValue = document.getElementById("thickness-value");
   const sphereRadiusValue = document.getElementById("sphereRadius-value");
+  const laserGuideThicknessValue = document.getElementById("laserGuideThickness-value");
+  const laserGuideOpacityValue = document.getElementById("laserGuideOpacity-value");
 
   const autoRotateToggle = document.getElementById("autoRotateToggle");
   const autoLengthToggle = document.getElementById("autoLengthToggle");
+  const laserGuidesToggle = document.getElementById("laserGuidesToggle");
   const resetPoseBtn = document.getElementById("resetPose");
   const isoPoseBtn = document.getElementById("isometricPose");
 
@@ -222,7 +289,9 @@ function initUI() {
 
   state._ui = {
     lenXInput, lenYInput, lenZInput, thicknessInput, sphereRadiusInput,
-    lenXValue, lenYValue, lenZValue, thicknessValue, sphereRadiusValue
+    laserGuideThicknessInput, laserGuideOpacityInput,
+    lenXValue, lenYValue, lenZValue, thicknessValue, sphereRadiusValue,
+    laserGuideThicknessValue, laserGuideOpacityValue
   };
 
   function updateLengthDisplays() {
@@ -231,6 +300,8 @@ function initUI() {
     lenZValue.textContent = state.lenZ.toFixed(2);
     thicknessValue.textContent = state.thickness.toFixed(3);
     sphereRadiusValue.textContent = state.sphereRadius.toFixed(3);
+    laserGuideThicknessValue.textContent = state.laserGuideThickness.toFixed(3);
+    laserGuideOpacityValue.textContent = state.laserGuideOpacity.toFixed(2);
   }
 
   function syncSliders() {
@@ -239,6 +310,8 @@ function initUI() {
     lenZInput.value = state.lenZ.toString();
     thicknessInput.value = state.thickness.toString();
     sphereRadiusInput.value = state.sphereRadius.toString();
+    laserGuideThicknessInput.value = state.laserGuideThickness.toString();
+    laserGuideOpacityInput.value = state.laserGuideOpacity.toString();
     updateLengthDisplays();
   }
 
@@ -250,9 +323,11 @@ function initUI() {
     rotSeedDisplay.textContent = state.rotSeed.toString();
   }
 
-  function updateAutoButtons() {
+  function updateToggleButtons() {
     autoRotateToggle.textContent = state.autoRotate ? "On" : "Off";
     autoLengthToggle.textContent = state.autoLength ? "On" : "Off";
+    laserGuidesToggle.textContent = state.showLaserGuides ? "On" : "Off";
+    laserGuidesToggle.classList.toggle("primary", state.showLaserGuides);
   }
 
   lenXInput.addEventListener("input", () => {
@@ -278,14 +353,30 @@ function initUI() {
     updateLengthDisplays();
   });
 
+  laserGuideThicknessInput.addEventListener("input", () => {
+    state.laserGuideThickness = parseFloat(laserGuideThicknessInput.value);
+    updateLengthDisplays();
+  });
+
+  laserGuideOpacityInput.addEventListener("input", () => {
+    state.laserGuideOpacity = parseFloat(laserGuideOpacityInput.value);
+    updateGuideMaterialVisuals();
+    updateLengthDisplays();
+  });
+
   autoRotateToggle.addEventListener("click", () => {
     state.autoRotate = !state.autoRotate;
-    updateAutoButtons();
+    updateToggleButtons();
   });
 
   autoLengthToggle.addEventListener("click", () => {
     state.autoLength = !state.autoLength;
-    updateAutoButtons();
+    updateToggleButtons();
+  });
+
+  laserGuidesToggle.addEventListener("click", () => {
+    state.showLaserGuides = !state.showLaserGuides;
+    updateToggleButtons();
   });
 
   resetPoseBtn.addEventListener("click", () => {
@@ -361,7 +452,8 @@ function initUI() {
 
   updateSeedDisplay();
   updateRotSeedDisplay();
-  updateAutoButtons();
+  updateToggleButtons();
+  updateGuideMaterialVisuals();
   syncSliders();
 }
 
@@ -398,6 +490,7 @@ function buildCurrentSvg() {
   const size = 1024;
   const half = size / 2;
   const pxPerUnit = 300;
+  const guideStrokePx = Math.max(state.laserGuideThickness, 0.001) * pxPerUnit;
 
   camera.updateMatrixWorld();
   const camRight = new THREE.Vector3();
@@ -415,7 +508,10 @@ function buildCurrentSvg() {
 
   const thicknessPx = state.thickness * pxPerUnit;
   const radiusPx = state.sphereRadius * pxPerUnit;
+  const halfWidth = half;
+  const halfHeight = half;
 
+  let guidesSvg = "";
   let armsSvg = "";
   armData.forEach(({ dir, len }) => {
     const worldDir = dir.clone().applyMatrix4(rotMatrix);
@@ -430,11 +526,24 @@ function buildCurrentSvg() {
     const x = half - projectedLen / 2;
     const y = half - thicknessPx / 2;
     armsSvg += `<rect x="${x}" y="${y}" width="${projectedLen}" height="${thicknessPx}" fill="white" transform="rotate(${rotateDeg} ${half} ${half})" />`;
+
+    if (state.showLaserGuides && projFactor > LASER_GUIDE_EPS) {
+      const dirX = px / projFactor;
+      const dirY = py / projFactor;
+      const svgDirX = dirX;
+      const svgDirY = -dirY;
+      const guideHalfLenPx = distanceToViewportEdge(svgDirX, svgDirY, halfWidth, halfHeight);
+      const x1 = half - svgDirX * guideHalfLenPx;
+      const y1 = half - svgDirY * guideHalfLenPx;
+      const x2 = half + svgDirX * guideHalfLenPx;
+      const y2 = half + svgDirY * guideHalfLenPx;
+      guidesSvg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#ffffff" stroke-opacity="${state.laserGuideOpacity}" stroke-width="${guideStrokePx}" stroke-linecap="butt" />`;
+    }
   });
 
   const circleSvg = `<circle cx="${half}" cy="${half}" r="${radiusPx}" fill="white" />`;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">${armsSvg}${circleSvg}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">${guidesSvg}${armsSvg}${circleSvg}</svg>`;
 }
 
 window.addEventListener("DOMContentLoaded", init);
