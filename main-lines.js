@@ -16,7 +16,7 @@ const ARM_LOCAL_DIRS = [
 ];
 
 const LASER_GUIDE_COLOR = 0xffffff;
-const LASER_GUIDE_DEFAULT_THICKNESS = 0.01;
+const LASER_GUIDE_DEFAULT_THICKNESS = 0.002;
 const LASER_GUIDE_DEFAULT_OPACITY = 0.95;
 const LASER_GUIDE_EPS = 1e-6;
 
@@ -24,11 +24,11 @@ const state = {
   lenX: 1.5,
   lenY: 1.09,
   lenZ: 1.09,
-  thickness: 0.08,
-  sphereRadius: 0.12,
+  thickness: 0.07,
+  sphereRadius: 0.085,
   autoRotate: true,
   autoLength: true,
-  showLaserGuides: false,
+  showLaserGuides: true,
   laserGuideThickness: LASER_GUIDE_DEFAULT_THICKNESS,
   laserGuideOpacity: LASER_GUIDE_DEFAULT_OPACITY,
   seed: 1,
