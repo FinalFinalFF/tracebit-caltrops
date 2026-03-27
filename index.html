@@ -24,19 +24,53 @@
       background: #050505;
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: 0;
     }
     h1 { font-size: 16px; margin-bottom: 4px; letter-spacing: 0.08em; text-transform: uppercase; }
     .subhead { font-size: 11px; color: #aaa; line-height: 1.4; }
-    .section { border-top: 1px solid #222; padding-top: 12px; }
-    .section:first-of-type { border-top: none; padding-top: 0; }
-    .section-title {
+    .intro-block { margin-bottom: 14px; }
+    details.panel-section {
+      border-top: 1px solid #222;
+      padding-top: 4px;
+      padding-bottom: 10px;
+    }
+    details.panel-section:first-of-type { border-top: none; }
+    details.panel-section > summary {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.12em;
-      margin-bottom: 8px;
       color: #bbb;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      padding: 8px 0 6px;
     }
+    details.panel-section > summary::-webkit-details-marker { display: none; }
+    details.panel-section > summary::after {
+      content: "▾";
+      font-size: 10px;
+      opacity: 0.65;
+      transition: transform 0.12s ease;
+    }
+    details.panel-section:not([open]) > summary::after {
+      transform: rotate(-90deg);
+    }
+    .panel-section-export {
+      border-top: 1px solid #222;
+      padding-top: 4px;
+      padding-bottom: 10px;
+    }
+    .panel-export-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #bbb;
+      padding: 8px 0 6px;
+    }
+    .section-body { padding-top: 4px; }
     .control-group { margin-bottom: 10px; }
     .control-label-row {
       display: flex;
@@ -109,145 +143,278 @@
       color: #eee;
     }
     .hint { font-size: 10px; color: #777; line-height: 1.4; }
+    input[type="color"] {
+      width: 100%;
+      height: 28px;
+      padding: 2px;
+      border: 1px solid #333;
+      border-radius: 2px;
+      background: #111;
+      cursor: pointer;
+    }
+    select.bg-select {
+      width: 100%;
+      padding: 4px 6px;
+      font-size: 11px;
+      background: #111;
+      border: 1px solid #333;
+      color: #eee;
+      border-radius: 2px;
+    }
+    .gradient-colors .control-group.hidden { display: none; }
+    .section-divider {
+      height: 1px;
+      background: #222;
+      margin: 12px 0;
+      border: none;
+    }
+    .shortcuts-bar {
+      flex-shrink: 0;
+      border-bottom: 1px solid #222;
+      padding-bottom: 12px;
+      margin-bottom: 8px;
+    }
+    .shortcuts-bar .button-row {
+      gap: 4px;
+    }
+    .shortcuts-bar .button-row button {
+      flex: 1 1 0;
+      min-width: 0;
+      padding-left: 4px;
+      padding-right: 4px;
+    }
   </style>
 </head>
 <body>
   <div id="app">
     <div id="canvas-container"></div>
     <div id="controls">
-      <div class="section">
+      <div class="intro-block">
         <h1>Tracebit Caltrops</h1>
         <div class="subhead">
           3‑axis caltrop logo explorer. Pure 2D stroke rendering.
         </div>
       </div>
 
-      <div class="section">
-        <div class="section-title">Arms (Axis Length)</div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>X Axis</span>
-            <span class="value" id="lenX-value"></span>
-          </div>
-          <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.5" />
-        </div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Y Axis</span>
-            <span class="value" id="lenY-value"></span>
-          </div>
-          <input id="lenY" type="range" min="0.2" max="2.0" step="0.01" value="1.09" />
-        </div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Z Axis</span>
-            <span class="value" id="lenZ-value"></span>
-          </div>
-          <input id="lenZ" type="range" min="0.2" max="2.0" step="0.01" value="1.09" />
-        </div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Stroke Thickness</span>
-            <span class="value" id="thickness-value"></span>
-          </div>
-          <input id="thickness" type="range" min="0.05" max="0.3" step="0.005" value="0.07" />
-        </div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Center Radius</span>
-            <span class="value" id="sphereRadius-value"></span>
-          </div>
-          <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.085" />
+      <div class="shortcuts-bar">
+        <div class="panel-export-title" style="padding-top:0;">Shortcuts</div>
+        <div class="button-row">
+          <button type="button" id="shortcutDefault">Default</button>
+          <button type="button" id="shortcutVibes">Vibes</button>
+          <button type="button" id="shortcutRandom">Random</button>
         </div>
       </div>
 
-      <div class="section">
-        <div class="section-title">Pose & Motion</div>
-        <div class="button-row" style="margin-bottom:8px;">
-          <button id="resetPose">Reset Pose</button>
-          <button id="isometricPose">Isometric</button>
+      <details class="panel-section" open>
+        <summary>Arms (Axis Length)</summary>
+        <div class="section-body">
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>X Axis</span>
+              <span class="value" id="lenX-value"></span>
+            </div>
+            <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.5" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Y Axis</span>
+              <span class="value" id="lenY-value"></span>
+            </div>
+            <input id="lenY" type="range" min="0.2" max="2.0" step="0.01" value="1.09" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Z Axis</span>
+              <span class="value" id="lenZ-value"></span>
+            </div>
+            <input id="lenZ" type="range" min="0.2" max="2.0" step="0.01" value="1.09" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Reset lengths</span>
+            </div>
+            <div class="button-row">
+              <button id="resetArmLengths" type="button">Reset</button>
+            </div>
+            <p class="hint" style="margin-top:6px;">Restore default X / Y / Z (1.5 / 1.09 / 1.09) and turn off Auto Length.</p>
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Auto Length</span>
+            </div>
+            <div class="button-row">
+              <button id="autoLengthToggle" type="button">On</button>
+            </div>
+          </div>
+          <hr class="section-divider" />
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Stroke Thickness</span>
+              <span class="value" id="thickness-value"></span>
+            </div>
+            <input id="thickness" type="range" min="0.05" max="0.3" step="0.005" value="0.07" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Center Radius</span>
+              <span class="value" id="sphereRadius-value"></span>
+            </div>
+            <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.085" />
+          </div>
         </div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Auto Rotate</span>
-          </div>
-          <div class="button-row">
-            <button id="autoRotateToggle">On</button>
-          </div>
-        </div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Auto Length</span>
-          </div>
-          <div class="button-row">
-            <button id="autoLengthToggle">On</button>
-          </div>
-        </div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Laser Guides</span>
-          </div>
-          <div class="button-row">
-            <button id="laserGuidesToggle">On</button>
-          </div>
-        </div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Guide Thickness</span>
-            <span class="value" id="laserGuideThickness-value"></span>
-          </div>
-          <input id="laserGuideThickness" type="range" min="0.002" max="0.04" step="0.001" value="0.002" />
-        </div>
-        <div class="control-group">
-          <div class="control-label-row">
-            <span>Guide Opacity</span>
-            <span class="value" id="laserGuideOpacity-value"></span>
-          </div>
-          <input id="laserGuideOpacity" type="range" min="0.1" max="1.0" step="0.01" value="0.95" />
-        </div>
-      </div>
+      </details>
 
-      <div class="section">
-        <div class="section-title">Variation (Seed)</div>
-        <div class="seed-row">
-          <span>Length Seed</span>
-          <span class="seed-value" id="seed-display"></span>
+      <details class="panel-section">
+        <summary>Laser Guides</summary>
+        <div class="section-body">
+          <div class="control-group">
+            <div class="button-row">
+              <button id="laserGuidesToggle" type="button">On</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Laser Thickness</span>
+              <span class="value" id="laserGuideThickness-value"></span>
+            </div>
+            <input id="laserGuideThickness" type="range" min="0.002" max="0.04" step="0.001" value="0.002" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Laser Opacity</span>
+              <span class="value" id="laserGuideOpacity-value"></span>
+            </div>
+            <input id="laserGuideOpacity" type="range" min="0.1" max="1.0" step="0.01" value="0.95" />
+          </div>
         </div>
-        <div class="button-row">
-          <button id="seedPrev">&minus;</button>
-          <button id="seedNext">+</button>
-          <button id="seedRandom">Random</button>
-        </div>
-        <div class="seed-input-row">
-          <input id="seedInput" type="number" placeholder="Jump to seed…" />
-          <button id="seedGo">Go</button>
-        </div>
-        <div class="seed-row" style="margin-top:10px;">
-          <span>Rotation Seed</span>
-          <span class="seed-value" id="rotSeed-display"></span>
-        </div>
-        <div class="button-row">
-          <button id="rotSeedRandom">Random Rotation</button>
-        </div>
-        <p class="hint">
-          Seeds remap arm lengths and rotation deterministically within the configured ranges.
-        </p>
-      </div>
+      </details>
 
-      <div class="section">
-        <div class="section-title">Export</div>
-        <div class="button-row">
-          <button id="downloadPng" class="primary">Download PNG</button>
-          <button id="downloadSvg">Download SVG</button>
+      <details class="panel-section">
+        <summary>Pose</summary>
+        <div class="section-body">
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Auto Rotate</span>
+            </div>
+            <div class="button-row">
+              <button id="autoRotateToggle" type="button">On</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <div class="button-row">
+              <button id="poseReset" type="button">Reset</button>
+            </div>
+            <p class="hint" style="margin-top:6px;">Resets isometric view and turns off Auto Rotate.</p>
+          </div>
         </div>
-        <p class="hint">
-          Uses the current pose and lengths. Ideal for capturing candidate variable marks, in both raster and vector.
-        </p>
+      </details>
+
+      <details class="panel-section">
+        <summary>Style</summary>
+        <div class="section-body">
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Bit Color</span>
+            </div>
+            <input id="bitColor" type="color" value="#ffffff" />
+          </div>
+          <hr class="section-divider" />
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Background Mode</span>
+            </div>
+            <div class="button-row">
+              <button id="backgroundModeSolid" type="button" class="primary">Solid</button>
+              <button id="backgroundModeGradient" type="button">Gradient</button>
+            </div>
+          </div>
+          <div id="solidBackgroundControls" class="control-group">
+            <div class="control-label-row">
+              <span>Color</span>
+            </div>
+            <input id="solidBackgroundColor" type="color" value="#000000" />
+          </div>
+          <div id="gradientBackgroundControls" class="gradient-colors" style="display: none;">
+            <div class="control-group">
+              <div class="control-label-row">
+                <span>Align gradient to</span>
+              </div>
+              <select id="gradientAlignAxis" class="bg-select">
+                <option value="0" selected>X axis arm</option>
+                <option value="1">Y axis arm</option>
+                <option value="2">Z axis arm</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <div class="control-label-row">
+                <span>Color stops</span>
+              </div>
+              <select id="gradientColorCount" class="bg-select">
+                <option value="2">2 colors</option>
+                <option value="3" selected>3 colors</option>
+                <option value="4">4 colors</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <div class="control-label-row"><span>Color 1</span></div>
+              <input id="gradientColor0" type="color" value="#8a9a8e" />
+            </div>
+            <div class="control-group">
+              <div class="control-label-row"><span>Color 2</span></div>
+              <input id="gradientColor1" type="color" value="#f5e6e8" />
+            </div>
+            <div class="control-group" id="gradientColor2-wrap">
+              <div class="control-label-row"><span>Color 3</span></div>
+              <input id="gradientColor2" type="color" value="#c45c3e" />
+            </div>
+            <div class="control-group" id="gradientColor3-wrap" style="display: none;">
+              <div class="control-label-row"><span>Color 4</span></div>
+              <input id="gradientColor3" type="color" value="#2a1810" />
+            </div>
+          </div>
+          <p class="hint" style="margin-top:8px;">
+            Gradient follows the projected axis in the view. PNG export includes the background.
+          </p>
+        </div>
+      </details>
+
+      <details class="panel-section">
+        <summary>Variation (Seed)</summary>
+        <div class="section-body">
+          <div class="seed-row">
+            <span>Seed</span>
+            <span class="seed-value" id="seed-display"></span>
+          </div>
+          <div class="button-row">
+            <button id="seedPrev" type="button">&minus;</button>
+            <button id="seedNext" type="button">+</button>
+            <button id="seedRandom" type="button">Random</button>
+          </div>
+          <div class="seed-input-row">
+            <input id="seedInput" type="number" placeholder="Jump to seed…" />
+            <button id="seedGo" type="button">Go</button>
+          </div>
+          <p class="hint">
+            One seed sets arm lengths and pose rotation deterministically (turn off Auto Rotate to see the pose).
+          </p>
+        </div>
+      </details>
+
+      <div class="panel-section-export">
+        <div class="panel-export-title">Export</div>
+        <div class="section-body">
+          <div class="button-row">
+            <button id="downloadPng" type="button" class="primary">PNG</button>
+            <button id="downloadSvg" type="button">SVG</button>
+          </div>
+          <p class="hint">
+            Current pose, lengths, style, and background.
+          </p>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Three.js from local vendor (import map), plus 2D rect-based main logic -->
   <script type="importmap">
     {
       "imports": {
@@ -255,7 +422,6 @@
       }
     }
   </script>
-  <script type="module" src="./main-lines.js?v=6"></script>
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
-

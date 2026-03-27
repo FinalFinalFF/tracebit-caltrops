@@ -1,24 +1,59 @@
-// Tracebit Caltrops 3D Visualizer — Three.js from local vendor/ (github.com/mrdoob/three.js)
+// Tracebit Caltrops — 2D stroke rendering with 3D-projected, camera-facing rectangles.
+// Arms always appear as perfect 2D rectangles with 90° corners regardless of 3D rotation.
 import * as THREE from "three";
 import { OrbitControls } from "./vendor/OrbitControls.js";
-import { SVGRenderer } from "./vendor/SVGRenderer.js";
 
 let scene, camera, renderer, controls;
-let caltrop;
+let caltropGroup; // rotation tracker only — no visible children
+let centerDisc;
+let armMeshX, armMeshY, armMeshZ;
+let guideMeshX, guideMeshY, guideMeshZ;
+
+let bgCanvas;
+let bgTexture;
+/** Last projected arm directions in camera space (same order as arms in updateArmProjections). */
+let lastArmScreenProjection = [
+  { px: 1, py: 0, projFactor: 1 },
+  { px: 0, py: 1, projFactor: 1 },
+  { px: 0, py: 1, projFactor: 1 },
+];
+/** Normalized canvas-space direction (x right, y down) for gradient; reused when axis is edge-on. */
+let lastGradientCanvasDir = { dx: 1, dy: 0 };
+
+const ARM_LOCAL_DIRS = [
+  new THREE.Vector3(1, 0, 0),
+  new THREE.Vector3(0, 1, 0),
+  new THREE.Vector3(0, 0, 1),
+];
+
+const LASER_GUIDE_DEFAULT_THICKNESS = 0.002;
+const LASER_GUIDE_DEFAULT_OPACITY = 0.95;
+const LASER_GUIDE_EPS = 1e-6;
+
+/** Default X / Y / Z arm lengths (sliders and Reset). */
+const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.5, lenY: 1.09, lenZ: 1.09 });
+
+/** Default gradient stops (Shortcuts Default / Vibes). */
+const DEFAULT_GRADIENT_COLORS = Object.freeze(["#8a9a8e", "#f5e6e8", "#c45c3e", "#2a1810"]);
 
 const state = {
-  lenX: 1.5,
-  lenY: 1.09,
-  lenZ: 1.09,
-  thickness: 0.08,
-  sphereRadius: 0.12,
+  lenX: DEFAULT_ARM_LENGTHS.lenX,
+  lenY: DEFAULT_ARM_LENGTHS.lenY,
+  lenZ: DEFAULT_ARM_LENGTHS.lenZ,
+  thickness: 0.07,
+  sphereRadius: 0.085,
   autoRotate: true,
   autoLength: true,
-  endCaps: "flat", // flat | rounded
+  showLaserGuides: true,
+  laserGuideThickness: LASER_GUIDE_DEFAULT_THICKNESS,
+  laserGuideOpacity: LASER_GUIDE_DEFAULT_OPACITY,
   seed: 1,
-  rotSeed: 1,
-  rotSpeed: 1.0,
-  rotTilt: 0.6
+  backgroundMode: "solid",
+  solidBackgroundColor: "#000000",
+  gradientAlignAxis: 0,
+  gradientColorCount: 3,
+  gradientColors: [...DEFAULT_GRADIENT_COLORS],
+  bitColorHex: "#ffffff",
 };
 
 function init() {
@@ -29,8 +64,9 @@ function init() {
 
   const width = container.clientWidth || window.innerWidth;
   const height = container.clientHeight || window.innerHeight;
-  const aspect = width && height ? width / height : 1;
+  const aspect = width / height;
   const frustumSize = 4;
+
   camera = new THREE.OrthographicCamera(
     (frustumSize * aspect) / -2,
     (frustumSize * aspect) / 2,
@@ -52,207 +88,153 @@ function init() {
   controls.dampingFactor = 0.06;
   controls.enablePan = false;
 
-  caltrop = createCaltrop();
-  scene.add(caltrop);
+  caltropGroup = new THREE.Object3D();
+
+  armMeshX = createArmRect();
+  armMeshY = createArmRect();
+  armMeshZ = createArmRect();
+  guideMeshX = createGuideRect();
+  guideMeshY = createGuideRect();
+  guideMeshZ = createGuideRect();
+  guideMeshX.visible = false;
+  guideMeshY.visible = false;
+  guideMeshZ.visible = false;
+  scene.add(guideMeshX);
+  scene.add(guideMeshY);
+  scene.add(guideMeshZ);
+  scene.add(armMeshX);
+  scene.add(armMeshY);
+  scene.add(armMeshZ);
+
+  centerDisc = createCenterDisc();
+  scene.add(centerDisc);
+
+  bgCanvas = document.createElement("canvas");
+  bgTexture = new THREE.CanvasTexture(bgCanvas);
+  if ("colorSpace" in bgTexture) {
+    bgTexture.colorSpace = THREE.SRGBColorSpace;
+  }
+  bgTexture.minFilter = THREE.LinearFilter;
+  bgTexture.magFilter = THREE.LinearFilter;
 
   window.addEventListener("resize", onWindowResize);
 
   initUI();
-  applyStateToCaltrop();
+  initAccordionPanels();
+  resizeBackgroundCanvas();
 
   animate();
 }
 
-function createCaltrop() {
-  const group = new THREE.Group();
-
-  const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-  const armThickness = state.thickness;
-  const armLengthBase = 1.0;
-
-  const geomX = new THREE.BoxGeometry(armLengthBase, armThickness, armThickness);
-  const meshX = new THREE.Mesh(geomX, material);
-  meshX.name = "armX";
-
-  const geomY = new THREE.BoxGeometry(armThickness, armLengthBase, armThickness);
-  const meshY = new THREE.Mesh(geomY, material);
-  meshY.name = "armY";
-
-  const geomZ = new THREE.BoxGeometry(armThickness, armThickness, armLengthBase);
-  const meshZ = new THREE.Mesh(geomZ, material);
-  meshZ.name = "armZ";
-
-  group.add(meshX);
-  group.add(meshY);
-  group.add(meshZ);
-
-  const sphereRadius = 0.17;
-  const sphereGeom = new THREE.SphereGeometry(sphereRadius, 32, 16);
-  const sphere = new THREE.Mesh(sphereGeom, material);
-  sphere.name = "weldSphere";
-  group.add(sphere);
-
-  // Billboard end caps: six camera-facing planes, one at each arm end.
-  const endCaps = [];
-  const capThickness = armThickness * 1.05;
-  const capLength = armThickness * 1.6;
-  const capGeometry = new THREE.PlaneGeometry(capLength, capThickness);
-
-  const axes = [
-    { axis: "x", dir: "positive" },
-    { axis: "x", dir: "negative" },
-    { axis: "y", dir: "positive" },
-    { axis: "y", dir: "negative" },
-    { axis: "z", dir: "positive" },
-    { axis: "z", dir: "negative" }
-  ];
-
-  axes.forEach(({ axis, dir }) => {
-    const cap = new THREE.Mesh(capGeometry, material);
-    cap.userData.isBillboardCap = true;
-    cap.userData.axis = axis;
-    cap.userData.dir = dir;
-    // Billboard caps live at world level so they don't inherit the caltrop's
-    // rotation; we position them manually each frame.
-    scene.add(cap);
-    endCaps.push(cap);
-  });
-
-  group.userData = {
-    armLengthBase,
-    armThicknessBase: armThickness,
-    endCaps
-  };
-
-  updateEndCaps(group);
-
-  return group;
+function createArmRect() {
+  const geom = new THREE.PlaneGeometry(1, 1);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  return new THREE.Mesh(geom, mat);
 }
 
-function applyStateToCaltrop() {
-  const armX = caltrop.getObjectByName("armX");
-  const armY = caltrop.getObjectByName("armY");
-  const armZ = caltrop.getObjectByName("armZ");
-  const weldSphere = caltrop.getObjectByName("weldSphere");
-
-  if (armX && armY && armZ) {
-    const baseThickness = caltrop.userData.armThicknessBase || 0.12;
-
-    const thicknessScale = state.thickness / baseThickness;
-
-    armX.scale.set(state.lenX, thicknessScale, thicknessScale);
-    armY.scale.set(thicknessScale, state.lenY, thicknessScale);
-    armZ.scale.set(thicknessScale, thicknessScale, state.lenZ);
-  }
-
-  updateEndCaps(caltrop);
-
-  // Update billboard cap positions to sit at the current arm tips (in world
-  // space, since caps are parented to the scene to avoid inheriting rotation).
-  const endCaps = caltrop.userData.endCaps || [];
-  const armLengthBase = caltrop.userData.armLengthBase || 1.0;
-  const baseThickness = caltrop.userData.armThicknessBase || 0.12;
-  const thicknessScale = state.thickness / baseThickness;
-
-  endCaps.forEach((cap) => {
-    const axis = cap.userData.axis;
-    const dir = cap.userData.dir;
-    if (!axis || !dir) return;
-
-    let lengthScale = 1.0;
-    if (axis === "x") lengthScale = state.lenX;
-    if (axis === "y") lengthScale = state.lenY;
-    if (axis === "z") lengthScale = state.lenZ;
-
-    const halfLength = (armLengthBase * lengthScale) / 2;
-    const sign = dir === "positive" ? 1 : -1;
-    const offsetAlongAxis = halfLength * sign;
-
-    const local = new THREE.Vector3(0, 0, 0);
-    if (axis === "x") local.x = offsetAlongAxis;
-    if (axis === "y") local.y = offsetAlongAxis;
-    if (axis === "z") local.z = offsetAlongAxis;
-
-    caltrop.localToWorld(local);
-    cap.position.copy(local);
-
-    // Match cap thickness scale to bar thickness so the rectangle visually
-    // aligns with the bar cross-section.
-    const capScale = thicknessScale;
-    cap.scale.set(1, capScale, 1);
-  });
-
-  if (weldSphere) {
-    const baseRadius = 0.17;
-    const radiusScale = state.sphereRadius / baseRadius;
-    weldSphere.scale.set(radiusScale, radiusScale, radiusScale);
-  }
+function createCenterDisc() {
+  const geom = new THREE.CircleGeometry(1, 48);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const mesh = new THREE.Mesh(geom, mat);
+  return mesh;
 }
 
-function updateEndCaps(group) {
-  // Toggle billboard caps visibility based on mode.
-  const endCaps = group.userData.endCaps || [];
-  endCaps.forEach((cap) => {
-    cap.visible = state.endCaps === "flat";
+function createGuideRect() {
+  const geom = new THREE.PlaneGeometry(1, 1);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: state.laserGuideOpacity,
+    depthWrite: false,
   });
+  return new THREE.Mesh(geom, mat);
+}
 
-  // Remove existing rounded caps
-  const toRemove = [];
-  group.traverse((child) => {
-    if (child.userData && child.userData.isRoundedCap) {
-      toRemove.push(child);
-    }
+function distanceToViewportEdge(directionX, directionY, halfWidth, halfHeight) {
+  const maxX = Math.abs(directionX) > LASER_GUIDE_EPS ? halfWidth / Math.abs(directionX) : Infinity;
+  const maxY = Math.abs(directionY) > LASER_GUIDE_EPS ? halfHeight / Math.abs(directionY) : Infinity;
+  return Math.min(maxX, maxY);
+}
+
+function updateGuideMaterialVisuals() {
+  [guideMeshX, guideMeshY, guideMeshZ].forEach((guide) => {
+    if (!guide || !guide.material) return;
+    guide.material.opacity = state.laserGuideOpacity;
+    guide.material.needsUpdate = true;
   });
-  toRemove.forEach((m) => group.remove(m));
+}
 
-  if (state.endCaps !== "rounded") {
-    return;
-  }
+function updateBitColorVisuals() {
+  const c = new THREE.Color(state.bitColorHex);
+  [armMeshX, armMeshY, armMeshZ].forEach((mesh) => {
+    if (mesh && mesh.material) mesh.material.color.copy(c);
+  });
+  if (centerDisc && centerDisc.material) centerDisc.material.color.copy(c);
+  [guideMeshX, guideMeshY, guideMeshZ].forEach((guide) => {
+    if (guide && guide.material) guide.material.color.copy(c);
+  });
+}
 
-  const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const baseThickness = group.userData.armThicknessBase || 0.12;
-  // Much smaller than the bar thickness so it reads as a softening of the
-  // corner rather than a hemispherical cap.
-  const radius = state.thickness * 0.2;
+// Project each arm's 3D direction onto the camera plane, then orient
+// camera-facing rectangles along the resulting 2D directions.
+function updateArmProjections() {
+  camera.updateMatrixWorld();
 
-  const sphereGeom = new THREE.SphereGeometry(radius, 24, 12);
+  const camRight = new THREE.Vector3();
+  const camUp = new THREE.Vector3();
+  const camFwd = new THREE.Vector3();
+  camera.matrixWorld.extractBasis(camRight, camUp, camFwd);
 
-  const armX = group.getObjectByName("armX");
-  const armY = group.getObjectByName("armY");
-  const armZ = group.getObjectByName("armZ");
+  const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(caltropGroup.rotation);
+  const halfWidth = (camera.right - camera.left) * 0.5;
+  const halfHeight = (camera.top - camera.bottom) * 0.5;
 
   const arms = [
-    { arm: armX, axis: "x" },
-    { arm: armY, axis: "y" },
-    { arm: armZ, axis: "z" }
+    { mesh: armMeshX, guide: guideMeshX, dir: ARM_LOCAL_DIRS[0], len: state.lenX },
+    { mesh: armMeshY, guide: guideMeshY, dir: ARM_LOCAL_DIRS[1], len: state.lenY },
+    { mesh: armMeshZ, guide: guideMeshZ, dir: ARM_LOCAL_DIRS[2], len: state.lenZ },
   ];
 
-  const armLengthBase = group.userData.armLengthBase || 1.0;
+  arms.forEach(({ mesh, guide, dir, len }, armIndex) => {
+    const worldDir = dir.clone().applyMatrix4(rotMatrix);
 
-  arms.forEach(({ arm, axis }) => {
-    if (!arm) return;
-    const lengthScale =
-      axis === "x" ? state.lenX : axis === "y" ? state.lenY : state.lenZ;
-    const halfLength = (armLengthBase * lengthScale) / 2;
+    const px = worldDir.dot(camRight);
+    const py = worldDir.dot(camUp);
 
-    ["positive", "negative"].forEach((dir) => {
-      const cap = new THREE.Mesh(sphereGeom, material);
-      cap.userData.isRoundedCap = true;
+    const angle = Math.atan2(py, px);
+    const projFactor = Math.sqrt(px * px + py * py);
+    lastArmScreenProjection[armIndex] = { px, py, projFactor };
+    const projectedLen = Math.max(projFactor * len, 0.001);
 
-      cap.position.set(0, 0, 0);
-      // Sink almost the entire sphere into the bar so only a slight rounding
-      // is visible beyond the flat end.
-      const signedHalf = dir === "positive" ? halfLength : -halfLength;
-      const sign = signedHalf >= 0 ? 1 : -1;
-      const offset = signedHalf - sign * radius * 0.95;
-      if (axis === "x") cap.position.x = offset;
-      if (axis === "y") cap.position.y = offset;
-      if (axis === "z") cap.position.z = offset;
+    mesh.quaternion.copy(camera.quaternion);
+    mesh.rotateZ(angle);
 
-      group.add(cap);
-    });
+    mesh.scale.set(projectedLen, state.thickness, 1);
+    mesh.position.set(0, 0, 0);
+
+    if (guide) {
+      if (state.showLaserGuides && projFactor > LASER_GUIDE_EPS) {
+        const dirX = px / projFactor;
+        const dirY = py / projFactor;
+        const halfGuideLength = distanceToViewportEdge(dirX, dirY, halfWidth, halfHeight);
+        const fullGuideLength = halfGuideLength * 2;
+        guide.visible = true;
+        guide.quaternion.copy(camera.quaternion);
+        guide.rotateZ(angle);
+        guide.scale.set(fullGuideLength, Math.max(state.laserGuideThickness, 0.001), 1);
+        guide.position.set(0, 0, 0);
+      } else {
+        guide.visible = false;
+      }
+    }
   });
+
+  if (centerDisc) {
+    centerDisc.quaternion.copy(camera.quaternion);
+    centerDisc.scale.setScalar(state.sphereRadius);
+    centerDisc.position.set(0, 0, 0);
+  }
 }
 
 function onWindowResize() {
@@ -269,15 +251,73 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
 
   renderer.setSize(width, height);
+  resizeBackgroundCanvas();
+}
+
+function resizeBackgroundCanvas() {
+  if (!renderer || !bgCanvas) return;
+  const w = renderer.domElement.width;
+  const h = renderer.domElement.height;
+  if (bgCanvas.width !== w || bgCanvas.height !== h) {
+    bgCanvas.width = w;
+    bgCanvas.height = h;
+    if (bgTexture) bgTexture.needsUpdate = true;
+  }
+}
+
+function updateBackground() {
+  if (!bgCanvas || !bgTexture || !scene) return;
+
+  resizeBackgroundCanvas();
+
+  if (state.backgroundMode === "solid") {
+    scene.background = new THREE.Color(state.solidBackgroundColor);
+    return;
+  }
+
+  const axis = Math.max(0, Math.min(2, state.gradientAlignAxis | 0));
+  const proj = lastArmScreenProjection[axis];
+  let dx = lastGradientCanvasDir.dx;
+  let dyC = lastGradientCanvasDir.dy;
+  if (proj.projFactor > LASER_GUIDE_EPS) {
+    const ndx = proj.px / proj.projFactor;
+    const ndy = -proj.py / proj.projFactor;
+    const len = Math.hypot(ndx, ndy);
+    if (len > LASER_GUIDE_EPS) {
+      dx = ndx / len;
+      dyC = ndy / len;
+      lastGradientCanvasDir = { dx, dy: dyC };
+    }
+  }
+
+  const w = bgCanvas.width;
+  const h = bgCanvas.height;
+  const ctx = bgCanvas.getContext("2d");
+  const cx = w * 0.5;
+  const cy = h * 0.5;
+  const L = Math.hypot(w, h) * 0.5;
+  const x0 = cx - dx * L;
+  const y0 = cy - dyC * L;
+  const x1 = cx + dx * L;
+  const y1 = cy + dyC * L;
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  const n = Math.max(2, Math.min(4, state.gradientColorCount | 0));
+  for (let i = 0; i < n; i++) {
+    g.addColorStop(i / (n - 1), state.gradientColors[i]);
+  }
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  bgTexture.needsUpdate = true;
+  scene.background = bgTexture;
 }
 
 function animate() {
   requestAnimationFrame(animate);
 
-  if (state.autoRotate && caltrop) {
-    const t = performance.now() * 0.0003 * state.rotSpeed;
-    caltrop.rotation.y = t;
-    caltrop.rotation.x = t * state.rotTilt;
+  if (state.autoRotate) {
+    const t = performance.now() * 0.0003;
+    caltropGroup.rotation.y = t;
+    caltropGroup.rotation.x = t * 0.6;
   }
 
   if (state.autoLength) {
@@ -291,44 +331,19 @@ function animate() {
     state.lenY = baseY + Math.sin(t * 1.7 + 1.2) * amp;
     state.lenZ = baseZ + Math.sin(t * 2.3 + 2.4) * amp;
 
-    applyStateToCaltrop();
-
-    // Keep UI sliders and numeric labels in sync with animated lengths
     if (state._ui) {
-      const {
-        lenXInput,
-        lenYInput,
-        lenZInput,
-        thicknessInput,
-        sphereRadiusInput,
-        lenXValue,
-        lenYValue,
-        lenZValue,
-        thicknessValue,
-        sphereRadiusValue
-      } = state._ui;
-
+      const { lenXInput, lenYInput, lenZInput, lenXValue, lenYValue, lenZValue } = state._ui;
       if (lenXInput) lenXInput.value = state.lenX.toString();
       if (lenYInput) lenYInput.value = state.lenY.toString();
       if (lenZInput) lenZInput.value = state.lenZ.toString();
-      if (thicknessInput) thicknessInput.value = state.thickness.toString();
-      if (sphereRadiusInput) sphereRadiusInput.value = state.sphereRadius.toString();
-
       if (lenXValue) lenXValue.textContent = state.lenX.toFixed(2);
       if (lenYValue) lenYValue.textContent = state.lenY.toFixed(2);
       if (lenZValue) lenZValue.textContent = state.lenZ.toFixed(2);
-      if (thicknessValue) thicknessValue.textContent = state.thickness.toFixed(3);
-      if (sphereRadiusValue) sphereRadiusValue.textContent = state.sphereRadius.toFixed(3);
     }
   }
 
-  // Make billboard caps face the camera so they always appear as flat, 2D ends.
-  if (caltrop && caltrop.userData.endCaps) {
-    caltrop.userData.endCaps.forEach((cap) => {
-      if (!cap.visible) return;
-      cap.quaternion.copy(camera.quaternion);
-    });
-  }
+  updateArmProjections();
+  updateBackground();
 
   if (controls && typeof controls.update === "function") {
     controls.update();
@@ -336,7 +351,19 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// --- UI / Variation ---
+// --- UI / Seeds -------------------------------------------------------------
+
+function initAccordionPanels() {
+  const panels = document.querySelectorAll("#controls details.panel-section");
+  panels.forEach((details) => {
+    details.addEventListener("toggle", () => {
+      if (!details.open) return;
+      panels.forEach((other) => {
+        if (other !== details) other.open = false;
+      });
+    });
+  });
+}
 
 function initUI() {
   const lenXInput = document.getElementById("lenX");
@@ -344,19 +371,22 @@ function initUI() {
   const lenZInput = document.getElementById("lenZ");
   const thicknessInput = document.getElementById("thickness");
   const sphereRadiusInput = document.getElementById("sphereRadius");
+  const laserGuideThicknessInput = document.getElementById("laserGuideThickness");
+  const laserGuideOpacityInput = document.getElementById("laserGuideOpacity");
   const lenXValue = document.getElementById("lenX-value");
   const lenYValue = document.getElementById("lenY-value");
   const lenZValue = document.getElementById("lenZ-value");
   const thicknessValue = document.getElementById("thickness-value");
   const sphereRadiusValue = document.getElementById("sphereRadius-value");
+  const laserGuideThicknessValue = document.getElementById("laserGuideThickness-value");
+  const laserGuideOpacityValue = document.getElementById("laserGuideOpacity-value");
 
   const autoRotateToggle = document.getElementById("autoRotateToggle");
   const autoLengthToggle = document.getElementById("autoLengthToggle");
-  const resetPoseBtn = document.getElementById("resetPose");
-  const isoPoseBtn = document.getElementById("isometricPose");
-
-  const capsFlatBtn = document.getElementById("capsFlat");
-  const capsRoundedBtn = document.getElementById("capsRounded");
+  const laserGuidesToggle = document.getElementById("laserGuidesToggle");
+  const poseResetBtn = document.getElementById("poseReset");
+  const resetArmLengthsBtn = document.getElementById("resetArmLengths");
+  const bitColorInput = document.getElementById("bitColor");
 
   const seedDisplay = document.getElementById("seed-display");
   const seedPrev = document.getElementById("seedPrev");
@@ -365,29 +395,31 @@ function initUI() {
   const seedInput = document.getElementById("seedInput");
   const seedGo = document.getElementById("seedGo");
 
-  const rotSeedDisplay = document.getElementById("rotSeed-display");
-  const rotSeedRandom = document.getElementById("rotSeedRandom");
-
   const downloadPngBtn = document.getElementById("downloadPng");
   const downloadSvgBtn = document.getElementById("downloadSvg");
 
-  // Cache UI elements on state so animation can keep sliders in sync
+  const backgroundModeSolidBtn = document.getElementById("backgroundModeSolid");
+  const backgroundModeGradientBtn = document.getElementById("backgroundModeGradient");
+  const solidBackgroundControls = document.getElementById("solidBackgroundControls");
+  const gradientBackgroundControls = document.getElementById("gradientBackgroundControls");
+  const solidBackgroundColorInput = document.getElementById("solidBackgroundColor");
+  const gradientAlignAxisSelect = document.getElementById("gradientAlignAxis");
+  const gradientColorCountSelect = document.getElementById("gradientColorCount");
+  const gradientColorInputs = [
+    document.getElementById("gradientColor0"),
+    document.getElementById("gradientColor1"),
+    document.getElementById("gradientColor2"),
+    document.getElementById("gradientColor3"),
+  ];
+  const gradientColor2Wrap = document.getElementById("gradientColor2-wrap");
+  const gradientColor3Wrap = document.getElementById("gradientColor3-wrap");
+
   state._ui = {
-    lenXInput,
-    lenYInput,
-    lenZInput,
-    thicknessInput,
-    sphereRadiusInput,
-    lenXValue,
-    lenYValue,
-    lenZValue,
-    thicknessValue,
-    sphereRadiusValue
+    lenXInput, lenYInput, lenZInput, thicknessInput, sphereRadiusInput,
+    laserGuideThicknessInput, laserGuideOpacityInput,
+    lenXValue, lenYValue, lenZValue, thicknessValue, sphereRadiusValue,
+    laserGuideThicknessValue, laserGuideOpacityValue
   };
-  function updateAutoButtons() {
-    autoRotateToggle.textContent = state.autoRotate ? "On" : "Off";
-    autoLengthToggle.textContent = state.autoLength ? "On" : "Off";
-  }
 
   function updateLengthDisplays() {
     lenXValue.textContent = state.lenX.toFixed(2);
@@ -395,6 +427,8 @@ function initUI() {
     lenZValue.textContent = state.lenZ.toFixed(2);
     thicknessValue.textContent = state.thickness.toFixed(3);
     sphereRadiusValue.textContent = state.sphereRadius.toFixed(3);
+    laserGuideThicknessValue.textContent = state.laserGuideThickness.toFixed(3);
+    laserGuideOpacityValue.textContent = state.laserGuideOpacity.toFixed(2);
   }
 
   function syncSliders() {
@@ -403,6 +437,8 @@ function initUI() {
     lenZInput.value = state.lenZ.toString();
     thicknessInput.value = state.thickness.toString();
     sphereRadiusInput.value = state.sphereRadius.toString();
+    laserGuideThicknessInput.value = state.laserGuideThickness.toString();
+    laserGuideOpacityInput.value = state.laserGuideOpacity.toString();
     updateLengthDisplays();
   }
 
@@ -410,84 +446,140 @@ function initUI() {
     seedDisplay.textContent = state.seed.toString();
   }
 
-  function updateRotSeedDisplay() {
-    rotSeedDisplay.textContent = state.rotSeed.toString();
+  function updateToggleButtons() {
+    autoRotateToggle.textContent = state.autoRotate ? "On" : "Off";
+    autoLengthToggle.textContent = state.autoLength ? "On" : "Off";
+    laserGuidesToggle.textContent = state.showLaserGuides ? "On" : "Off";
+    laserGuidesToggle.classList.toggle("primary", state.showLaserGuides);
+  }
+
+  function syncBackgroundModeButtons() {
+    const solid = state.backgroundMode === "solid";
+    backgroundModeSolidBtn.classList.toggle("primary", solid);
+    backgroundModeGradientBtn.classList.toggle("primary", !solid);
+    solidBackgroundControls.style.display = solid ? "block" : "none";
+    gradientBackgroundControls.style.display = solid ? "none" : "block";
+  }
+
+  function updateGradientColorVisibility() {
+    const n = state.gradientColorCount;
+    if (gradientColor2Wrap) gradientColor2Wrap.style.display = n >= 3 ? "block" : "none";
+    if (gradientColor3Wrap) gradientColor3Wrap.style.display = n >= 4 ? "block" : "none";
+  }
+
+  function readGradientColorsFromInputs() {
+    gradientColorInputs.forEach((el, i) => {
+      if (el) state.gradientColors[i] = el.value;
+    });
+  }
+
+  solidBackgroundColorInput.value = state.solidBackgroundColor;
+  gradientAlignAxisSelect.value = String(state.gradientAlignAxis);
+  gradientColorCountSelect.value = String(state.gradientColorCount);
+  gradientColorInputs.forEach((el, i) => {
+    if (el) el.value = state.gradientColors[i];
+  });
+
+  backgroundModeSolidBtn.addEventListener("click", () => {
+    state.backgroundMode = "solid";
+    syncBackgroundModeButtons();
+  });
+  backgroundModeGradientBtn.addEventListener("click", () => {
+    state.backgroundMode = "gradient";
+    syncBackgroundModeButtons();
+  });
+  solidBackgroundColorInput.addEventListener("input", () => {
+    state.solidBackgroundColor = solidBackgroundColorInput.value;
+  });
+  gradientAlignAxisSelect.addEventListener("change", () => {
+    state.gradientAlignAxis = parseInt(gradientAlignAxisSelect.value, 10) || 0;
+  });
+  gradientColorCountSelect.addEventListener("change", () => {
+    state.gradientColorCount = parseInt(gradientColorCountSelect.value, 10) || 3;
+    updateGradientColorVisibility();
+  });
+  gradientColorInputs.forEach((el) => {
+    if (!el) return;
+    el.addEventListener("input", readGradientColorsFromInputs);
+  });
+
+  syncBackgroundModeButtons();
+  updateGradientColorVisibility();
+
+  if (bitColorInput) {
+    bitColorInput.value = state.bitColorHex;
+    bitColorInput.addEventListener("input", () => {
+      state.bitColorHex = bitColorInput.value;
+      updateBitColorVisuals();
+    });
   }
 
   lenXInput.addEventListener("input", () => {
     state.lenX = parseFloat(lenXInput.value);
     updateLengthDisplays();
-    applyStateToCaltrop();
   });
   lenYInput.addEventListener("input", () => {
     state.lenY = parseFloat(lenYInput.value);
     updateLengthDisplays();
-    applyStateToCaltrop();
   });
   lenZInput.addEventListener("input", () => {
     state.lenZ = parseFloat(lenZInput.value);
     updateLengthDisplays();
-    applyStateToCaltrop();
   });
 
   thicknessInput.addEventListener("input", () => {
     state.thickness = parseFloat(thicknessInput.value);
     updateLengthDisplays();
-    applyStateToCaltrop();
   });
 
   sphereRadiusInput.addEventListener("input", () => {
     state.sphereRadius = parseFloat(sphereRadiusInput.value);
     updateLengthDisplays();
-    applyStateToCaltrop();
+  });
+
+  laserGuideThicknessInput.addEventListener("input", () => {
+    state.laserGuideThickness = parseFloat(laserGuideThicknessInput.value);
+    updateLengthDisplays();
+  });
+
+  laserGuideOpacityInput.addEventListener("input", () => {
+    state.laserGuideOpacity = parseFloat(laserGuideOpacityInput.value);
+    updateGuideMaterialVisuals();
+    updateLengthDisplays();
   });
 
   autoRotateToggle.addEventListener("click", () => {
     state.autoRotate = !state.autoRotate;
-    updateAutoButtons();
+    updateToggleButtons();
   });
 
   autoLengthToggle.addEventListener("click", () => {
     state.autoLength = !state.autoLength;
-    updateAutoButtons();
+    updateToggleButtons();
   });
 
-  resetPoseBtn.addEventListener("click", () => {
+  laserGuidesToggle.addEventListener("click", () => {
+    state.showLaserGuides = !state.showLaserGuides;
+    updateToggleButtons();
+  });
+
+  poseResetBtn.addEventListener("click", () => {
+    caltropGroup.rotation.set(0, 0, 0);
     camera.position.set(4, 4, 4);
     camera.lookAt(0, 0, 0);
     controls.target.set(0, 0, 0);
-    caltrop.rotation.set(0, 0, 0);
     controls.update();
+    state.autoRotate = false;
+    updateToggleButtons();
   });
 
-  isoPoseBtn.addEventListener("click", () => {
-    camera.position.set(3.5, 3.5, 3.5);
-    camera.lookAt(0, 0, 0);
-    controls.target.set(0, 0, 0);
-    caltrop.rotation.set(0, 0, 0);
-    controls.update();
-  });
-
-  function updateCapsButtons() {
-    if (state.endCaps === "rounded") {
-      capsRoundedBtn.classList.add("primary");
-      capsFlatBtn.classList.remove("primary");
-    } else {
-      capsFlatBtn.classList.add("primary");
-      capsRoundedBtn.classList.remove("primary");
-    }
-  }
-
-  capsFlatBtn.addEventListener("click", () => {
-    state.endCaps = "flat";
-    updateEndCaps(caltrop);
-    updateCapsButtons();
-  });
-
-  capsRoundedBtn.addEventListener("click", () => {
-    state.endCaps = "rounded";
-    updateEndCaps(caltrop);
-    updateCapsButtons();
+  resetArmLengthsBtn.addEventListener("click", () => {
+    state.lenX = DEFAULT_ARM_LENGTHS.lenX;
+    state.lenY = DEFAULT_ARM_LENGTHS.lenY;
+    state.lenZ = DEFAULT_ARM_LENGTHS.lenZ;
+    state.autoLength = false;
+    updateToggleButtons();
+    syncSliders();
   });
 
   seedPrev.addEventListener("click", () => {
@@ -505,8 +597,7 @@ function initUI() {
   });
 
   seedRandom.addEventListener("click", () => {
-    const randomSeed = Math.floor(Math.random() * 100000) + 1;
-    state.seed = randomSeed;
+    state.seed = Math.floor(Math.random() * 100000) + 1;
     applySeed(state.seed);
     updateSeedDisplay();
     syncSliders();
@@ -522,13 +613,6 @@ function initUI() {
     }
   });
 
-  rotSeedRandom.addEventListener("click", () => {
-    const randomSeed = Math.floor(Math.random() * 100000) + 1;
-    state.rotSeed = randomSeed;
-    applyRotationSeed(state.rotSeed);
-    updateRotSeedDisplay();
-  });
-
   downloadPngBtn.addEventListener("click", () => {
     const link = document.createElement("a");
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -538,34 +622,50 @@ function initUI() {
   });
 
   downloadSvgBtn.addEventListener("click", () => {
-    const width = renderer.domElement.width;
-    const height = renderer.domElement.height;
-
-    const svgRenderer = new SVGRenderer();
-    svgRenderer.setSize(width, height);
-    svgRenderer.setClearColor(0x000000, 1);
-    svgRenderer.render(scene, camera);
-
-    const serializer = new XMLSerializer();
-    const svgString = serializer.serializeToString(svgRenderer.domElement);
-
-    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const svg = buildCurrentSvg();
+    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-
     const link = document.createElement("a");
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     link.download = `tracebit-caltrop-${state.seed}-${timestamp}.svg`;
     link.href = url;
     link.click();
-
     URL.revokeObjectURL(url);
   });
 
-  updateSeedDisplay();
-  updateRotSeedDisplay();
-  updateAutoButtons();
-  syncSliders();
-  updateCapsButtons();
+  function syncFullUI() {
+    syncSliders();
+    updateSeedDisplay();
+    if (seedInput) seedInput.value = state.seed.toString();
+    updateToggleButtons();
+    if (bitColorInput) bitColorInput.value = state.bitColorHex;
+    solidBackgroundColorInput.value = state.solidBackgroundColor;
+    gradientAlignAxisSelect.value = String(state.gradientAlignAxis);
+    gradientColorCountSelect.value = String(state.gradientColorCount);
+    gradientColorInputs.forEach((el, i) => {
+      if (el) el.value = state.gradientColors[i];
+    });
+    updateGradientColorVisibility();
+    syncBackgroundModeButtons();
+    updateBitColorVisuals();
+    updateGuideMaterialVisuals();
+  }
+
+  document.getElementById("shortcutDefault").addEventListener("click", () => {
+    applyShortcutDefault();
+    syncFullUI();
+  });
+  document.getElementById("shortcutVibes").addEventListener("click", () => {
+    applyShortcutVibes();
+    syncFullUI();
+  });
+  document.getElementById("shortcutRandom").addEventListener("click", () => {
+    applyShortcutRandom();
+    syncFullUI();
+  });
+
+  applySeed(state.seed);
+  syncFullUI();
 }
 
 // Simple deterministic PRNG (mulberry32)
@@ -580,28 +680,183 @@ function mulberry32(a) {
 
 function applySeed(seed) {
   const rand = mulberry32(seed);
-
   const min = 0.3;
   const max = 1.8;
-
   state.lenX = min + (max - min) * rand();
   state.lenY = min + (max - min) * rand();
   state.lenZ = min + (max - min) * rand();
-
-  applyStateToCaltrop();
+  caltropGroup.rotation.set(
+    rand() * Math.PI * 2,
+    rand() * Math.PI * 2,
+    rand() * Math.PI * 2
+  );
 }
 
-function applyRotationSeed(seed) {
-  const rand = mulberry32(seed);
+function resetCameraToDefault() {
+  camera.position.set(4, 4, 4);
+  camera.lookAt(0, 0, 0);
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
 
-  // Random but controlled static pose so seeds are reproducible
-  const ax = (rand() - 0.5) * Math.PI * 1.2;
-  const ay = (rand() - 0.5) * Math.PI * 2.0;
-  const az = (rand() - 0.5) * Math.PI * 0.4;
+function randomHexColor() {
+  return "#" + Math.floor(Math.random() * 0x1000000)
+    .toString(16)
+    .padStart(6, "0");
+}
 
-  if (caltrop) {
-    caltrop.rotation.set(ax, ay, az);
+function applyShortcutDefault() {
+  state.seed = 1;
+  state.backgroundMode = "solid";
+  state.solidBackgroundColor = "#000000";
+  state.gradientAlignAxis = 0;
+  state.gradientColorCount = 3;
+  state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
+  state.bitColorHex = "#ffffff";
+  state.autoRotate = true;
+  state.autoLength = true;
+  state.showLaserGuides = true;
+  state.thickness = 0.07;
+  state.sphereRadius = 0.085;
+  state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
+  state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
+  applySeed(1);
+  resetCameraToDefault();
+}
+
+function applyShortcutVibes() {
+  state.backgroundMode = "gradient";
+  state.gradientAlignAxis = Math.floor(Math.random() * 3);
+  state.gradientColorCount = 3;
+  state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
+  state.bitColorHex = "#000000";
+  state.autoRotate = false;
+  state.autoLength = false;
+  state.thickness = 0.07;
+  state.sphereRadius = 0.085;
+  state.showLaserGuides = true;
+  state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
+  state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
+  state.seed = Math.floor(Math.random() * 100000) + 1;
+  applySeed(state.seed);
+  resetCameraToDefault();
+}
+
+function applyShortcutRandom() {
+  state.seed = Math.floor(Math.random() * 100000) + 1;
+  applySeed(state.seed);
+  state.bitColorHex = randomHexColor();
+  state.backgroundMode = Math.random() < 0.5 ? "solid" : "gradient";
+  if (state.backgroundMode === "solid") {
+    state.solidBackgroundColor = randomHexColor();
+  } else {
+    state.gradientColorCount = 2 + Math.floor(Math.random() * 3);
+    state.gradientAlignAxis = Math.floor(Math.random() * 3);
+    for (let i = 0; i < 4; i++) {
+      state.gradientColors[i] = randomHexColor();
+    }
   }
+  state.autoRotate = Math.random() < 0.5;
+  state.autoLength = Math.random() < 0.5;
+  state.showLaserGuides = Math.random() < 0.5;
+  state.thickness = 0.05 + Math.random() * (0.3 - 0.05);
+  state.sphereRadius = 0.05 + Math.random() * (0.35 - 0.05);
+  state.laserGuideThickness = 0.002 + Math.random() * (0.04 - 0.002);
+  state.laserGuideOpacity = 0.1 + Math.random() * 0.9;
+  resetCameraToDefault();
+}
+
+function buildSvgBackgroundLayer(size, half, camRight, camUp, rotMatrix) {
+  if (state.backgroundMode === "solid") {
+    return `<rect width="${size}" height="${size}" fill="${state.solidBackgroundColor}"/>`;
+  }
+  const axis = Math.max(0, Math.min(2, state.gradientAlignAxis | 0));
+  const alignDir = ARM_LOCAL_DIRS[axis];
+  const worldDir = alignDir.clone().applyMatrix4(rotMatrix);
+  const gpx = worldDir.dot(camRight);
+  const gpy = worldDir.dot(camUp);
+  const gpf = Math.sqrt(gpx * gpx + gpy * gpy);
+  let svgDirX = 1;
+  let svgDirY = 0;
+  if (gpf > LASER_GUIDE_EPS) {
+    svgDirX = gpx / gpf;
+    svgDirY = -gpy / gpf;
+  }
+  const L = half * Math.sqrt(2);
+  const x1 = half - svgDirX * L;
+  const y1 = half - svgDirY * L;
+  const x2 = half + svgDirX * L;
+  const y2 = half + svgDirY * L;
+  const n = Math.max(2, Math.min(4, state.gradientColorCount | 0));
+  const stops = [];
+  for (let i = 0; i < n; i++) {
+    stops.push(`<stop offset="${i / (n - 1)}" stop-color="${state.gradientColors[i]}"/>`);
+  }
+  return `<defs><linearGradient id="bgGradient" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops.join("")}</linearGradient></defs><rect width="${size}" height="${size}" fill="url(#bgGradient)"/>`;
+}
+
+// SVG export uses the same projection math as the renderer.
+function buildCurrentSvg() {
+  const size = 1024;
+  const half = size / 2;
+  const pxPerUnit = 300;
+  const guideStrokePx = Math.max(state.laserGuideThickness, 0.001) * pxPerUnit;
+
+  camera.updateMatrixWorld();
+  const camRight = new THREE.Vector3();
+  const camUp = new THREE.Vector3();
+  const camFwd = new THREE.Vector3();
+  camera.matrixWorld.extractBasis(camRight, camUp, camFwd);
+
+  const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(caltropGroup.rotation);
+
+  const bgLayer = buildSvgBackgroundLayer(size, half, camRight, camUp, rotMatrix);
+
+  const armData = [
+    { dir: ARM_LOCAL_DIRS[0], len: state.lenX },
+    { dir: ARM_LOCAL_DIRS[1], len: state.lenY },
+    { dir: ARM_LOCAL_DIRS[2], len: state.lenZ },
+  ];
+
+  const thicknessPx = state.thickness * pxPerUnit;
+  const radiusPx = state.sphereRadius * pxPerUnit;
+  const halfWidth = half;
+  const halfHeight = half;
+  const bitFill = state.bitColorHex;
+
+  let guidesSvg = "";
+  let armsSvg = "";
+  armData.forEach(({ dir, len }) => {
+    const worldDir = dir.clone().applyMatrix4(rotMatrix);
+    const px = worldDir.dot(camRight);
+    const py = worldDir.dot(camUp);
+    const angle = Math.atan2(py, px);
+    const projFactor = Math.sqrt(px * px + py * py);
+    const projectedLen = projFactor * len * pxPerUnit;
+
+    // SVG Y-axis points down, camera Y-axis points up — negate angle
+    const rotateDeg = (-angle * 180) / Math.PI;
+    const x = half - projectedLen / 2;
+    const y = half - thicknessPx / 2;
+    armsSvg += `<rect x="${x}" y="${y}" width="${projectedLen}" height="${thicknessPx}" fill="${bitFill}" transform="rotate(${rotateDeg} ${half} ${half})" />`;
+
+    if (state.showLaserGuides && projFactor > LASER_GUIDE_EPS) {
+      const dirX = px / projFactor;
+      const dirY = py / projFactor;
+      const svgDirX = dirX;
+      const svgDirY = -dirY;
+      const guideHalfLenPx = distanceToViewportEdge(svgDirX, svgDirY, halfWidth, halfHeight);
+      const x1 = half - svgDirX * guideHalfLenPx;
+      const y1 = half - svgDirY * guideHalfLenPx;
+      const x2 = half + svgDirX * guideHalfLenPx;
+      const y2 = half + svgDirY * guideHalfLenPx;
+      guidesSvg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${bitFill}" stroke-opacity="${state.laserGuideOpacity}" stroke-width="${guideStrokePx}" stroke-linecap="butt" />`;
+    }
+  });
+
+  const circleSvg = `<circle cx="${half}" cy="${half}" r="${radiusPx}" fill="${bitFill}" />`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">${bgLayer}${guidesSvg}${armsSvg}${circleSvg}</svg>`;
 }
 
 window.addEventListener("DOMContentLoaded", init);
