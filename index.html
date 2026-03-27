@@ -174,6 +174,11 @@
       padding-bottom: 12px;
       margin-bottom: 8px;
     }
+    .shortcut-button-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
     .shortcuts-bar .button-row {
       gap: 4px;
     }
@@ -198,10 +203,15 @@
 
       <div class="shortcuts-bar">
         <div class="panel-export-title" style="padding-top:0;">Shortcuts</div>
-        <div class="button-row">
-          <button type="button" id="shortcutDefault">Default</button>
-          <button type="button" id="shortcutVibes">Vibes</button>
-          <button type="button" id="shortcutRandom">Random</button>
+        <div class="shortcut-button-rows">
+          <div class="button-row">
+            <button type="button" id="shortcutDefault">Default</button>
+            <button type="button" id="shortcutAuto">Auto</button>
+          </div>
+          <div class="button-row">
+            <button type="button" id="shortcutVibes">Vibes</button>
+            <button type="button" id="shortcutRandom">Random</button>
+          </div>
         </div>
       </div>
 
@@ -213,30 +223,26 @@
               <span>X Axis</span>
               <span class="value" id="lenX-value"></span>
             </div>
-            <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.5" />
+            <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.00" />
           </div>
           <div class="control-group">
             <div class="control-label-row">
               <span>Y Axis</span>
               <span class="value" id="lenY-value"></span>
             </div>
-            <input id="lenY" type="range" min="0.2" max="2.0" step="0.01" value="1.09" />
+            <input id="lenY" type="range" min="0.2" max="2.0" step="0.01" value="1.00" />
           </div>
           <div class="control-group">
             <div class="control-label-row">
               <span>Z Axis</span>
               <span class="value" id="lenZ-value"></span>
             </div>
-            <input id="lenZ" type="range" min="0.2" max="2.0" step="0.01" value="1.09" />
+            <input id="lenZ" type="range" min="0.2" max="2.0" step="0.01" value="1.30" />
           </div>
           <div class="control-group">
-            <div class="control-label-row">
-              <span>Reset lengths</span>
-            </div>
             <div class="button-row">
               <button id="resetArmLengths" type="button">Reset</button>
             </div>
-            <p class="hint" style="margin-top:6px;">Restore default X / Y / Z (1.5 / 1.09 / 1.09) and turn off Auto Length.</p>
           </div>
           <div class="control-group">
             <div class="control-label-row">
@@ -252,14 +258,14 @@
               <span>Stroke Thickness</span>
               <span class="value" id="thickness-value"></span>
             </div>
-            <input id="thickness" type="range" min="0.05" max="0.3" step="0.005" value="0.07" />
+            <input id="thickness" type="range" min="0.05" max="0.3" step="0.005" value="0.075" />
           </div>
           <div class="control-group">
             <div class="control-label-row">
               <span>Center Radius</span>
               <span class="value" id="sphereRadius-value"></span>
             </div>
-            <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.085" />
+            <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.100" />
           </div>
         </div>
       </details>

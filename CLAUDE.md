@@ -25,7 +25,7 @@ python -m http.server
 - **`updateArmProjections()`** each frame: projects local axes through `caltropGroup.rotation` and orients camera-facing meshes; fills **`lastArmScreenProjection`** for gradient alignment.
 - **`updateBackground()`** — solid `THREE.Color` or **`CanvasTexture`** from an offscreen 2D gradient aligned to the selected arm direction.
 - **`applySeed(seed)`** — single `mulberry32(seed)` stream: three draws for arm lengths, three for Euler rotation.
-- Shortcut handlers: **`applyShortcutDefault`**, **`applyShortcutVibes`**, **`applyShortcutRandom`**; shared defaults in **`DEFAULT_ARM_LENGTHS`**, **`DEFAULT_GRADIENT_COLORS`**, laser defaults.
+- Shortcut handlers: **`applyShortcutDefault`** (static lengths + zero rotation, no auto motion), **`applyShortcutAuto`** (seed 1 + **`applySeed(1)`** + auto rotate/length), **`applyShortcutVibes`**, **`applyShortcutRandom`**; shared defaults in **`DEFAULT_ARM_LENGTHS`**, **`DEFAULT_THICKNESS`**, **`DEFAULT_SPHERE_RADIUS`**, **`DEFAULT_GRADIENT_COLORS`**, laser defaults.
 
 ## Vendored Dependencies
 

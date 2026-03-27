@@ -31,7 +31,10 @@ const LASER_GUIDE_DEFAULT_OPACITY = 0.95;
 const LASER_GUIDE_EPS = 1e-6;
 
 /** Default X / Y / Z arm lengths (sliders and Reset). */
-const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.5, lenY: 1.09, lenZ: 1.09 });
+const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.0, lenY: 1.0, lenZ: 1.3 });
+
+const DEFAULT_THICKNESS = 0.075;
+const DEFAULT_SPHERE_RADIUS = 0.1;
 
 /** Default gradient stops (Shortcuts Default / Vibes). */
 const DEFAULT_GRADIENT_COLORS = Object.freeze(["#8a9a8e", "#f5e6e8", "#c45c3e", "#2a1810"]);
@@ -40,10 +43,10 @@ const state = {
   lenX: DEFAULT_ARM_LENGTHS.lenX,
   lenY: DEFAULT_ARM_LENGTHS.lenY,
   lenZ: DEFAULT_ARM_LENGTHS.lenZ,
-  thickness: 0.07,
-  sphereRadius: 0.085,
-  autoRotate: true,
-  autoLength: true,
+  thickness: DEFAULT_THICKNESS,
+  sphereRadius: DEFAULT_SPHERE_RADIUS,
+  autoRotate: false,
+  autoLength: false,
   showLaserGuides: true,
   laserGuideThickness: LASER_GUIDE_DEFAULT_THICKNESS,
   laserGuideOpacity: LASER_GUIDE_DEFAULT_OPACITY,
@@ -322,9 +325,9 @@ function animate() {
 
   if (state.autoLength) {
     const t = performance.now() * 0.0005;
-    const baseX = 1.24;
-    const baseY = 1.09;
-    const baseZ = 1.09;
+    const baseX = DEFAULT_ARM_LENGTHS.lenX;
+    const baseY = DEFAULT_ARM_LENGTHS.lenY;
+    const baseZ = DEFAULT_ARM_LENGTHS.lenZ;
     const amp = 0.35;
 
     state.lenX = baseX + Math.sin(t * 1.0) * amp;
@@ -655,6 +658,10 @@ function initUI() {
     applyShortcutDefault();
     syncFullUI();
   });
+  document.getElementById("shortcutAuto").addEventListener("click", () => {
+    applyShortcutAuto();
+    syncFullUI();
+  });
   document.getElementById("shortcutVibes").addEventListener("click", () => {
     applyShortcutVibes();
     syncFullUI();
@@ -664,7 +671,8 @@ function initUI() {
     syncFullUI();
   });
 
-  applySeed(state.seed);
+  caltropGroup.rotation.set(0, 0, 0);
+  resetCameraToDefault();
   syncFullUI();
 }
 
@@ -713,11 +721,33 @@ function applyShortcutDefault() {
   state.gradientColorCount = 3;
   state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
   state.bitColorHex = "#ffffff";
+  state.autoRotate = false;
+  state.autoLength = false;
+  state.showLaserGuides = true;
+  state.thickness = DEFAULT_THICKNESS;
+  state.sphereRadius = DEFAULT_SPHERE_RADIUS;
+  state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
+  state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
+  state.lenX = DEFAULT_ARM_LENGTHS.lenX;
+  state.lenY = DEFAULT_ARM_LENGTHS.lenY;
+  state.lenZ = DEFAULT_ARM_LENGTHS.lenZ;
+  caltropGroup.rotation.set(0, 0, 0);
+  resetCameraToDefault();
+}
+
+function applyShortcutAuto() {
+  state.seed = 1;
+  state.backgroundMode = "solid";
+  state.solidBackgroundColor = "#000000";
+  state.gradientAlignAxis = 0;
+  state.gradientColorCount = 3;
+  state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
+  state.bitColorHex = "#ffffff";
   state.autoRotate = true;
   state.autoLength = true;
   state.showLaserGuides = true;
-  state.thickness = 0.07;
-  state.sphereRadius = 0.085;
+  state.thickness = DEFAULT_THICKNESS;
+  state.sphereRadius = DEFAULT_SPHERE_RADIUS;
   state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
   state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
   applySeed(1);
@@ -732,8 +762,8 @@ function applyShortcutVibes() {
   state.bitColorHex = "#000000";
   state.autoRotate = false;
   state.autoLength = false;
-  state.thickness = 0.07;
-  state.sphereRadius = 0.085;
+  state.thickness = DEFAULT_THICKNESS;
+  state.sphereRadius = DEFAULT_SPHERE_RADIUS;
   state.showLaserGuides = true;
   state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
   state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;

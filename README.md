@@ -9,9 +9,10 @@ Flat, graphic Three.js tool for exploring a 3‑axis caltrop mark (X/Y/Z arms pl
 
 ### Shortcuts
 
-At the top of the sidebar (always visible):
+At the top of the sidebar (always visible), on **two rows** (Default / Auto, then Vibes / Random):
 
-- **Default** — Same as a fresh load: white bit on black, seed 1, auto rotate and auto length on, default stroke/center/laser settings.
+- **Default** — Static baseline: white bit on black, default arm lengths (no animated length), neutral rotation, auto rotate and auto length off, default stroke/center/laser settings. Same as a fresh load.
+- **Auto** — Seed 1 with animated motion: auto rotate and auto length on, lengths/pose from `applySeed(1)` (white on black, same defaults as before).
 - **Vibes** — Gradient background (default palette), black bit, random seed for lengths and pose, motion off; stroke/center/lasers match defaults.
 - **Random** — Randomizes seed, colors, background mode, toggles, and geometry sliders.
 
