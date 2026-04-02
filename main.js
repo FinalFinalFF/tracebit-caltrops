@@ -6,8 +6,8 @@ import { OrbitControls } from "./vendor/OrbitControls.js";
 let scene, camera, renderer, controls;
 let caltropGroup; // rotation tracker only — no visible children
 let centerDisc;
-let armMeshX, armMeshY, armMeshZ;
-let guideMeshX, guideMeshY, guideMeshZ;
+let armMeshX, armMeshY, armMeshZ, armMeshDiag;
+let guideMeshX, guideMeshY, guideMeshZ, guideMeshDiag;
 
 let bgCanvas;
 let bgTexture;
@@ -16,6 +16,7 @@ let lastArmScreenProjection = [
   { px: 1, py: 0, projFactor: 1 },
   { px: 0, py: 1, projFactor: 1 },
   { px: 0, py: 1, projFactor: 1 },
+  { px: 1, py: 0, projFactor: 1 },
 ];
 /** Normalized canvas-space direction (x right, y down) for gradient; reused when axis is edge-on. */
 let lastGradientCanvasDir = { dx: 1, dy: 0 };
@@ -25,13 +26,25 @@ const ARM_LOCAL_DIRS = [
   new THREE.Vector3(0, 1, 0),
   new THREE.Vector3(0, 0, 1),
 ];
+/** Default fourth-arm direction in local space: body diagonal (1,1,1) in Y-up coordinates. */
+const DEFAULT_FOURTH_ARM_AZIMUTH_DEG = 45;
+const DEFAULT_FOURTH_ARM_ELEVATION_DEG = (Math.asin(1 / Math.sqrt(3)) * 180) / Math.PI;
+const fourthArmDirScratch = new THREE.Vector3();
+
+/** Y-up: azimuth in XZ (from +Z toward +X); elevation from horizontal toward +Y. */
+function getFourthArmLocalDir(target) {
+  const elev = THREE.MathUtils.degToRad(state.fourthArmElevationDeg);
+  const azim = THREE.MathUtils.degToRad(state.fourthArmAzimuthDeg);
+  const ch = Math.cos(elev);
+  return target.set(ch * Math.sin(azim), Math.sin(elev), ch * Math.cos(azim)).normalize();
+}
 
 const LASER_GUIDE_DEFAULT_THICKNESS = 0.002;
 const LASER_GUIDE_DEFAULT_OPACITY = 0.95;
 const LASER_GUIDE_EPS = 1e-6;
 
 /** Default X / Y / Z arm lengths (sliders and Reset). */
-const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.0, lenY: 1.0, lenZ: 1.3 });
+const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.0, lenY: 1.0, lenZ: 1.3, lenDiag: 1.0 });
 
 const DEFAULT_THICKNESS = 0.075;
 const DEFAULT_SPHERE_RADIUS = 0.1;
@@ -43,6 +56,10 @@ const state = {
   lenX: DEFAULT_ARM_LENGTHS.lenX,
   lenY: DEFAULT_ARM_LENGTHS.lenY,
   lenZ: DEFAULT_ARM_LENGTHS.lenZ,
+  lenDiag: DEFAULT_ARM_LENGTHS.lenDiag,
+  showFourthArm: false,
+  fourthArmAzimuthDeg: DEFAULT_FOURTH_ARM_AZIMUTH_DEG,
+  fourthArmElevationDeg: DEFAULT_FOURTH_ARM_ELEVATION_DEG,
   thickness: DEFAULT_THICKNESS,
   sphereRadius: DEFAULT_SPHERE_RADIUS,
   autoRotate: false,
@@ -96,18 +113,24 @@ function init() {
   armMeshX = createArmRect();
   armMeshY = createArmRect();
   armMeshZ = createArmRect();
+  armMeshDiag = createArmRect();
+  armMeshDiag.visible = false;
   guideMeshX = createGuideRect();
   guideMeshY = createGuideRect();
   guideMeshZ = createGuideRect();
+  guideMeshDiag = createGuideRect();
   guideMeshX.visible = false;
   guideMeshY.visible = false;
   guideMeshZ.visible = false;
+  guideMeshDiag.visible = false;
   scene.add(guideMeshX);
   scene.add(guideMeshY);
   scene.add(guideMeshZ);
+  scene.add(guideMeshDiag);
   scene.add(armMeshX);
   scene.add(armMeshY);
   scene.add(armMeshZ);
+  scene.add(armMeshDiag);
 
   centerDisc = createCenterDisc();
   scene.add(centerDisc);
@@ -161,7 +184,7 @@ function distanceToViewportEdge(directionX, directionY, halfWidth, halfHeight) {
 }
 
 function updateGuideMaterialVisuals() {
-  [guideMeshX, guideMeshY, guideMeshZ].forEach((guide) => {
+  [guideMeshX, guideMeshY, guideMeshZ, guideMeshDiag].forEach((guide) => {
     if (!guide || !guide.material) return;
     guide.material.opacity = state.laserGuideOpacity;
     guide.material.needsUpdate = true;
@@ -170,11 +193,11 @@ function updateGuideMaterialVisuals() {
 
 function updateBitColorVisuals() {
   const c = new THREE.Color(state.bitColorHex);
-  [armMeshX, armMeshY, armMeshZ].forEach((mesh) => {
+  [armMeshX, armMeshY, armMeshZ, armMeshDiag].forEach((mesh) => {
     if (mesh && mesh.material) mesh.material.color.copy(c);
   });
   if (centerDisc && centerDisc.material) centerDisc.material.color.copy(c);
-  [guideMeshX, guideMeshY, guideMeshZ].forEach((guide) => {
+  [guideMeshX, guideMeshY, guideMeshZ, guideMeshDiag].forEach((guide) => {
     if (guide && guide.material) guide.material.color.copy(c);
   });
 }
@@ -193,13 +216,21 @@ function updateArmProjections() {
   const halfWidth = (camera.right - camera.left) * 0.5;
   const halfHeight = (camera.top - camera.bottom) * 0.5;
 
+  getFourthArmLocalDir(fourthArmDirScratch);
   const arms = [
-    { mesh: armMeshX, guide: guideMeshX, dir: ARM_LOCAL_DIRS[0], len: state.lenX },
-    { mesh: armMeshY, guide: guideMeshY, dir: ARM_LOCAL_DIRS[1], len: state.lenY },
-    { mesh: armMeshZ, guide: guideMeshZ, dir: ARM_LOCAL_DIRS[2], len: state.lenZ },
+    { mesh: armMeshX, guide: guideMeshX, dir: ARM_LOCAL_DIRS[0], len: state.lenX, draw: true },
+    { mesh: armMeshY, guide: guideMeshY, dir: ARM_LOCAL_DIRS[1], len: state.lenY, draw: true },
+    { mesh: armMeshZ, guide: guideMeshZ, dir: ARM_LOCAL_DIRS[2], len: state.lenZ, draw: true },
+    {
+      mesh: armMeshDiag,
+      guide: guideMeshDiag,
+      dir: fourthArmDirScratch,
+      len: state.lenDiag,
+      draw: state.showFourthArm,
+    },
   ];
 
-  arms.forEach(({ mesh, guide, dir, len }, armIndex) => {
+  arms.forEach(({ mesh, guide, dir, len, draw }, armIndex) => {
     const worldDir = dir.clone().applyMatrix4(rotMatrix);
 
     const px = worldDir.dot(camRight);
@@ -210,6 +241,13 @@ function updateArmProjections() {
     lastArmScreenProjection[armIndex] = { px, py, projFactor };
     const projectedLen = Math.max(projFactor * len, 0.001);
 
+    if (!draw) {
+      mesh.visible = false;
+      if (guide) guide.visible = false;
+      return;
+    }
+
+    mesh.visible = true;
     mesh.quaternion.copy(camera.quaternion);
     mesh.rotateZ(angle);
 
@@ -278,7 +316,7 @@ function updateBackground() {
     return;
   }
 
-  const axis = Math.max(0, Math.min(2, state.gradientAlignAxis | 0));
+  const axis = Math.max(0, Math.min(3, state.gradientAlignAxis | 0));
   const proj = lastArmScreenProjection[axis];
   let dx = lastGradientCanvasDir.dx;
   let dyC = lastGradientCanvasDir.dy;
@@ -333,15 +371,22 @@ function animate() {
     state.lenX = baseX + Math.sin(t * 1.0) * amp;
     state.lenY = baseY + Math.sin(t * 1.7 + 1.2) * amp;
     state.lenZ = baseZ + Math.sin(t * 2.3 + 2.4) * amp;
+    if (state.showFourthArm) {
+      const baseD = DEFAULT_ARM_LENGTHS.lenDiag;
+      state.lenDiag = baseD + Math.sin(t * 1.9 + 0.4) * amp;
+    }
 
     if (state._ui) {
-      const { lenXInput, lenYInput, lenZInput, lenXValue, lenYValue, lenZValue } = state._ui;
+      const { lenXInput, lenYInput, lenZInput, lenDiagInput, lenXValue, lenYValue, lenZValue, lenDiagValue } =
+        state._ui;
       if (lenXInput) lenXInput.value = state.lenX.toString();
       if (lenYInput) lenYInput.value = state.lenY.toString();
       if (lenZInput) lenZInput.value = state.lenZ.toString();
+      if (lenDiagInput && state.showFourthArm) lenDiagInput.value = state.lenDiag.toString();
       if (lenXValue) lenXValue.textContent = state.lenX.toFixed(2);
       if (lenYValue) lenYValue.textContent = state.lenY.toFixed(2);
       if (lenZValue) lenZValue.textContent = state.lenZ.toFixed(2);
+      if (lenDiagValue && state.showFourthArm) lenDiagValue.textContent = state.lenDiag.toFixed(2);
     }
   }
 
@@ -372,6 +417,9 @@ function initUI() {
   const lenXInput = document.getElementById("lenX");
   const lenYInput = document.getElementById("lenY");
   const lenZInput = document.getElementById("lenZ");
+  const lenDiagInput = document.getElementById("lenDiag");
+  const fourthArmAzimuthInput = document.getElementById("fourthArmAzimuth");
+  const fourthArmElevationInput = document.getElementById("fourthArmElevation");
   const thicknessInput = document.getElementById("thickness");
   const sphereRadiusInput = document.getElementById("sphereRadius");
   const laserGuideThicknessInput = document.getElementById("laserGuideThickness");
@@ -379,6 +427,9 @@ function initUI() {
   const lenXValue = document.getElementById("lenX-value");
   const lenYValue = document.getElementById("lenY-value");
   const lenZValue = document.getElementById("lenZ-value");
+  const lenDiagValue = document.getElementById("lenDiag-value");
+  const fourthArmAzimuthValue = document.getElementById("fourthArmAzimuth-value");
+  const fourthArmElevationValue = document.getElementById("fourthArmElevation-value");
   const thicknessValue = document.getElementById("thickness-value");
   const sphereRadiusValue = document.getElementById("sphereRadius-value");
   const laserGuideThicknessValue = document.getElementById("laserGuideThickness-value");
@@ -387,6 +438,7 @@ function initUI() {
   const autoRotateToggle = document.getElementById("autoRotateToggle");
   const autoLengthToggle = document.getElementById("autoLengthToggle");
   const laserGuidesToggle = document.getElementById("laserGuidesToggle");
+  const fourthArmToggle = document.getElementById("fourthArmToggle");
   const poseResetBtn = document.getElementById("poseReset");
   const resetArmLengthsBtn = document.getElementById("resetArmLengths");
   const bitColorInput = document.getElementById("bitColor");
@@ -418,16 +470,22 @@ function initUI() {
   const gradientColor3Wrap = document.getElementById("gradientColor3-wrap");
 
   state._ui = {
-    lenXInput, lenYInput, lenZInput, thicknessInput, sphereRadiusInput,
+    lenXInput, lenYInput, lenZInput, lenDiagInput, fourthArmAzimuthInput, fourthArmElevationInput,
+    thicknessInput, sphereRadiusInput,
     laserGuideThicknessInput, laserGuideOpacityInput,
-    lenXValue, lenYValue, lenZValue, thicknessValue, sphereRadiusValue,
-    laserGuideThicknessValue, laserGuideOpacityValue
+    lenXValue, lenYValue, lenZValue, lenDiagValue, fourthArmAzimuthValue, fourthArmElevationValue,
+    thicknessValue, sphereRadiusValue,
+    laserGuideThicknessValue, laserGuideOpacityValue,
+    fourthArmToggle,
   };
 
   function updateLengthDisplays() {
     lenXValue.textContent = state.lenX.toFixed(2);
     lenYValue.textContent = state.lenY.toFixed(2);
     lenZValue.textContent = state.lenZ.toFixed(2);
+    if (lenDiagValue) lenDiagValue.textContent = state.lenDiag.toFixed(2);
+    if (fourthArmAzimuthValue) fourthArmAzimuthValue.textContent = state.fourthArmAzimuthDeg.toFixed(0);
+    if (fourthArmElevationValue) fourthArmElevationValue.textContent = state.fourthArmElevationDeg.toFixed(1);
     thicknessValue.textContent = state.thickness.toFixed(3);
     sphereRadiusValue.textContent = state.sphereRadius.toFixed(3);
     laserGuideThicknessValue.textContent = state.laserGuideThickness.toFixed(3);
@@ -438,6 +496,9 @@ function initUI() {
     lenXInput.value = state.lenX.toString();
     lenYInput.value = state.lenY.toString();
     lenZInput.value = state.lenZ.toString();
+    if (lenDiagInput) lenDiagInput.value = state.lenDiag.toString();
+    if (fourthArmAzimuthInput) fourthArmAzimuthInput.value = state.fourthArmAzimuthDeg.toString();
+    if (fourthArmElevationInput) fourthArmElevationInput.value = state.fourthArmElevationDeg.toString();
     thicknessInput.value = state.thickness.toString();
     sphereRadiusInput.value = state.sphereRadius.toString();
     laserGuideThicknessInput.value = state.laserGuideThickness.toString();
@@ -454,6 +515,11 @@ function initUI() {
     autoLengthToggle.textContent = state.autoLength ? "On" : "Off";
     laserGuidesToggle.textContent = state.showLaserGuides ? "On" : "Off";
     laserGuidesToggle.classList.toggle("primary", state.showLaserGuides);
+    if (fourthArmToggle) {
+      fourthArmToggle.textContent = state.showFourthArm ? "On" : "Off";
+      fourthArmToggle.classList.toggle("primary", state.showFourthArm);
+    }
+    if (lenDiagInput) lenDiagInput.disabled = !state.showFourthArm;
   }
 
   function syncBackgroundModeButtons() {
@@ -530,6 +596,33 @@ function initUI() {
     updateLengthDisplays();
   });
 
+  if (lenDiagInput) {
+    lenDiagInput.addEventListener("input", () => {
+      state.lenDiag = parseFloat(lenDiagInput.value);
+      updateLengthDisplays();
+    });
+  }
+
+  if (fourthArmAzimuthInput) {
+    fourthArmAzimuthInput.addEventListener("input", () => {
+      state.fourthArmAzimuthDeg = parseFloat(fourthArmAzimuthInput.value);
+      updateLengthDisplays();
+    });
+  }
+  if (fourthArmElevationInput) {
+    fourthArmElevationInput.addEventListener("input", () => {
+      state.fourthArmElevationDeg = parseFloat(fourthArmElevationInput.value);
+      updateLengthDisplays();
+    });
+  }
+
+  if (fourthArmToggle) {
+    fourthArmToggle.addEventListener("click", () => {
+      state.showFourthArm = !state.showFourthArm;
+      updateToggleButtons();
+    });
+  }
+
   thicknessInput.addEventListener("input", () => {
     state.thickness = parseFloat(thicknessInput.value);
     updateLengthDisplays();
@@ -580,6 +673,9 @@ function initUI() {
     state.lenX = DEFAULT_ARM_LENGTHS.lenX;
     state.lenY = DEFAULT_ARM_LENGTHS.lenY;
     state.lenZ = DEFAULT_ARM_LENGTHS.lenZ;
+    state.lenDiag = DEFAULT_ARM_LENGTHS.lenDiag;
+    state.fourthArmAzimuthDeg = DEFAULT_FOURTH_ARM_AZIMUTH_DEG;
+    state.fourthArmElevationDeg = DEFAULT_FOURTH_ARM_ELEVATION_DEG;
     state.autoLength = false;
     updateToggleButtons();
     syncSliders();
@@ -670,6 +766,10 @@ function initUI() {
     applyShortcutRandom();
     syncFullUI();
   });
+  document.getElementById("shortcutFullRandom").addEventListener("click", () => {
+    applyShortcutFullRandom();
+    syncFullUI();
+  });
 
   caltropGroup.rotation.set(0, 0, 0);
   resetCameraToDefault();
@@ -693,6 +793,9 @@ function applySeed(seed) {
   state.lenX = min + (max - min) * rand();
   state.lenY = min + (max - min) * rand();
   state.lenZ = min + (max - min) * rand();
+  if (state.showFourthArm) {
+    state.lenDiag = min + (max - min) * rand();
+  }
   caltropGroup.rotation.set(
     rand() * Math.PI * 2,
     rand() * Math.PI * 2,
@@ -731,6 +834,10 @@ function applyShortcutDefault() {
   state.lenX = DEFAULT_ARM_LENGTHS.lenX;
   state.lenY = DEFAULT_ARM_LENGTHS.lenY;
   state.lenZ = DEFAULT_ARM_LENGTHS.lenZ;
+  state.lenDiag = DEFAULT_ARM_LENGTHS.lenDiag;
+  state.showFourthArm = false;
+  state.fourthArmAzimuthDeg = DEFAULT_FOURTH_ARM_AZIMUTH_DEG;
+  state.fourthArmElevationDeg = DEFAULT_FOURTH_ARM_ELEVATION_DEG;
   caltropGroup.rotation.set(0, 0, 0);
   resetCameraToDefault();
 }
@@ -750,13 +857,16 @@ function applyShortcutAuto() {
   state.sphereRadius = DEFAULT_SPHERE_RADIUS;
   state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
   state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
+  state.showFourthArm = false;
+  state.fourthArmAzimuthDeg = DEFAULT_FOURTH_ARM_AZIMUTH_DEG;
+  state.fourthArmElevationDeg = DEFAULT_FOURTH_ARM_ELEVATION_DEG;
   applySeed(1);
   resetCameraToDefault();
 }
 
 function applyShortcutVibes() {
   state.backgroundMode = "gradient";
-  state.gradientAlignAxis = Math.floor(Math.random() * 3);
+  state.gradientAlignAxis = Math.floor(Math.random() * 4);
   state.gradientColorCount = 3;
   state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
   state.bitColorHex = "#000000";
@@ -772,7 +882,7 @@ function applyShortcutVibes() {
   resetCameraToDefault();
 }
 
-function applyShortcutRandom() {
+function applyShortcutRandomCore() {
   state.seed = Math.floor(Math.random() * 100000) + 1;
   applySeed(state.seed);
   state.bitColorHex = randomHexColor();
@@ -781,7 +891,7 @@ function applyShortcutRandom() {
     state.solidBackgroundColor = randomHexColor();
   } else {
     state.gradientColorCount = 2 + Math.floor(Math.random() * 3);
-    state.gradientAlignAxis = Math.floor(Math.random() * 3);
+    state.gradientAlignAxis = Math.floor(Math.random() * 4);
     for (let i = 0; i < 4; i++) {
       state.gradientColors[i] = randomHexColor();
     }
@@ -789,19 +899,29 @@ function applyShortcutRandom() {
   state.autoRotate = Math.random() < 0.5;
   state.autoLength = Math.random() < 0.5;
   state.showLaserGuides = Math.random() < 0.5;
-  state.thickness = 0.05 + Math.random() * (0.3 - 0.05);
-  state.sphereRadius = 0.05 + Math.random() * (0.35 - 0.05);
   state.laserGuideThickness = 0.002 + Math.random() * (0.04 - 0.002);
   state.laserGuideOpacity = 0.1 + Math.random() * 0.9;
+  state.fourthArmAzimuthDeg = Math.random() * 360;
+  state.fourthArmElevationDeg = -90 + Math.random() * 180;
   resetCameraToDefault();
+}
+
+function applyShortcutRandom() {
+  applyShortcutRandomCore();
+}
+
+function applyShortcutFullRandom() {
+  applyShortcutRandomCore();
+  state.thickness = 0.05 + Math.random() * (0.3 - 0.05);
+  state.sphereRadius = 0.05 + Math.random() * (0.35 - 0.05);
 }
 
 function buildSvgBackgroundLayer(size, half, camRight, camUp, rotMatrix) {
   if (state.backgroundMode === "solid") {
     return `<rect width="${size}" height="${size}" fill="${state.solidBackgroundColor}"/>`;
   }
-  const axis = Math.max(0, Math.min(2, state.gradientAlignAxis | 0));
-  const alignDir = ARM_LOCAL_DIRS[axis];
+  const axis = Math.max(0, Math.min(3, state.gradientAlignAxis | 0));
+  const alignDir = axis === 3 ? getFourthArmLocalDir(fourthArmDirScratch) : ARM_LOCAL_DIRS[axis];
   const worldDir = alignDir.clone().applyMatrix4(rotMatrix);
   const gpx = worldDir.dot(camRight);
   const gpy = worldDir.dot(camUp);
@@ -847,6 +967,9 @@ function buildCurrentSvg() {
     { dir: ARM_LOCAL_DIRS[1], len: state.lenY },
     { dir: ARM_LOCAL_DIRS[2], len: state.lenZ },
   ];
+  if (state.showFourthArm) {
+    armData.push({ dir: getFourthArmLocalDir(fourthArmDirScratch), len: state.lenDiag });
+  }
 
   const thicknessPx = state.thickness * pxPerUnit;
   const radiusPx = state.sphereRadius * pxPerUnit;
