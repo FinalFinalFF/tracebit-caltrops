@@ -1688,6 +1688,11 @@ function randomHexColor() {
     .padStart(6, "0");
 }
 
+/** Picks from the same hex list as the palette shortcut swatches under each color control. */
+function randomPalettePresetColor() {
+  return PALETTE_PRESET_HEX[Math.floor(Math.random() * PALETTE_PRESET_HEX.length)].toLowerCase();
+}
+
 function applyShortcutDefault() {
   state.seed = 1;
   state.backgroundMode = "solid";
@@ -1806,13 +1811,13 @@ function applyShortcutVibes() {
   resetCameraToDefault();
 }
 
-function applyShortcutRandomCore() {
+function applyShortcutRandomCore(pickColor = randomHexColor) {
   state.seed = Math.floor(Math.random() * 100000) + 1;
   applySeed(state.seed);
-  state.bitColorHex = randomHexColor();
+  state.bitColorHex = pickColor();
   state.backgroundMode = Math.random() < 0.5 ? "solid" : "gradient";
   if (state.backgroundMode === "solid") {
-    state.solidBackgroundColor = randomHexColor();
+    state.solidBackgroundColor = pickColor();
   } else {
     state.gradientType = Math.random() < 0.5 ? "linear" : "radial";
     state.gradientRadialRadius = 0.2 + Math.random() * 0.75;
@@ -1820,11 +1825,11 @@ function applyShortcutRandomCore() {
     state.gradientRadialHeight = 0.4 + Math.random() * 1.6;
     state.gradientRadialOffsetX = (Math.random() - 0.5) * 0.6;
     state.gradientRadialOffsetY = (Math.random() - 0.5) * 0.6;
-    state.gradientRadialCanvasBackground = randomHexColor();
+    state.gradientRadialCanvasBackground = pickColor();
     state.gradientColorCount = 1 + Math.floor(Math.random() * 4);
     state.gradientAlignAxis = Math.floor(Math.random() * 4);
     for (let i = 0; i < 4; i++) {
-      state.gradientColors[i] = randomHexColor();
+      state.gradientColors[i] = pickColor();
     }
     if (state.gradientType === "radial") {
       state.gradientRadial2Enabled = Math.random() < 0.4;
@@ -1836,7 +1841,7 @@ function applyShortcutRandomCore() {
         state.gradientRadial2OffsetY = (Math.random() - 0.5) * 0.7;
         state.gradientRadial2ColorCount = 1 + Math.floor(Math.random() * 4);
         for (let i = 0; i < 4; i++) {
-          state.gradientRadial2Colors[i] = randomHexColor();
+          state.gradientRadial2Colors[i] = pickColor();
         }
       }
     } else {
@@ -1858,7 +1863,7 @@ function applyShortcutRandom() {
 }
 
 function applyShortcutFullRandom() {
-  applyShortcutRandomCore();
+  applyShortcutRandomCore(randomPalettePresetColor);
   state.thickness = 0.05 + Math.random() * (0.3 - 0.05);
   state.sphereRadius = 0.05 + Math.random() * (0.35 - 0.05);
   state.showGridLines = Math.random() < 0.5;
