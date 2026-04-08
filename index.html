@@ -83,6 +83,31 @@
       color: #bbb;
       font-variant-numeric: tabular-nums;
     }
+    .control-label-row input.value-num {
+      width: 4.5em;
+      max-width: 42%;
+      padding: 2px 5px;
+      font-size: 11px;
+      text-align: right;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #bbb;
+      font-variant-numeric: tabular-nums;
+      border-radius: 2px;
+    }
+    .control-label-row input.value-num:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .control-label-row input.value-num::-webkit-outer-spin-button,
+    .control-label-row input.value-num::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .control-label-row input.value-num[type="number"] {
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
     input[type="range"] {
       width: 100%;
       -webkit-appearance: none;
@@ -143,7 +168,12 @@
       color: #eee;
     }
     .hint { font-size: 10px; color: #777; line-height: 1.4; }
-    input[type="color"] {
+    .color-control-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .color-control-wrap input[type="color"] {
       width: 100%;
       height: 28px;
       padding: 2px;
@@ -151,6 +181,36 @@
       border-radius: 2px;
       background: #111;
       cursor: pointer;
+    }
+    .color-hex-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 4px 6px;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      text-transform: lowercase;
+      background: #050505;
+      border: 1px solid #333;
+      color: #eee;
+      border-radius: 2px;
+    }
+    .color-preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .color-preset-swatch {
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 1px solid #444;
+      border-radius: 2px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .color-preset-swatch:hover {
+      outline: 1px solid #fff;
+      outline-offset: 1px;
     }
     select.bg-select {
       width: 100%;
@@ -222,21 +282,21 @@
           <div class="control-group">
             <div class="control-label-row">
               <span>X Axis</span>
-              <span class="value" id="lenX-value"></span>
+              <input type="number" class="value value-num" id="lenX-value" inputmode="decimal" />
             </div>
             <input id="lenX" type="range" min="0.2" max="2.0" step="0.01" value="1.00" />
           </div>
           <div class="control-group">
             <div class="control-label-row">
               <span>Y Axis</span>
-              <span class="value" id="lenY-value"></span>
+              <input type="number" class="value value-num" id="lenY-value" inputmode="decimal" />
             </div>
             <input id="lenY" type="range" min="0.2" max="2.0" step="0.01" value="1.00" />
           </div>
           <div class="control-group">
             <div class="control-label-row">
               <span>Z Axis</span>
-              <span class="value" id="lenZ-value"></span>
+              <input type="number" class="value value-num" id="lenZ-value" inputmode="decimal" />
             </div>
             <input id="lenZ" type="range" min="0.2" max="2.0" step="0.01" value="1.30" />
           </div>
@@ -247,28 +307,30 @@
             <div class="button-row">
               <button id="fourthArmToggle" type="button">Off</button>
             </div>
+          </div>
+          <div id="fourthArmDetailControls" style="display: none;">
             <p class="hint" style="margin-top:6px;">Optional extra stroke in local space; same rigid rotation as X/Y/Z. Angles use Y-up: azimuth in the horizontal XZ plane (0° = +Z), elevation toward +Y.</p>
-          </div>
-          <div class="control-group">
-            <div class="control-label-row">
-              <span>Fourth azimuth (°)</span>
-              <span class="value" id="fourthArmAzimuth-value"></span>
+            <div class="control-group">
+              <div class="control-label-row">
+                <span>Fourth azimuth (°)</span>
+                <input type="number" class="value value-num" id="fourthArmAzimuth-value" inputmode="decimal" />
+              </div>
+              <input id="fourthArmAzimuth" type="range" min="0" max="360" step="1" value="45" />
             </div>
-            <input id="fourthArmAzimuth" type="range" min="0" max="360" step="1" value="45" />
-          </div>
-          <div class="control-group">
-            <div class="control-label-row">
-              <span>Fourth elevation (°)</span>
-              <span class="value" id="fourthArmElevation-value"></span>
+            <div class="control-group">
+              <div class="control-label-row">
+                <span>Fourth elevation (°)</span>
+                <input type="number" class="value value-num" id="fourthArmElevation-value" inputmode="decimal" />
+              </div>
+              <input id="fourthArmElevation" type="range" min="-90" max="90" step="0.5" value="35.264" />
             </div>
-            <input id="fourthArmElevation" type="range" min="-90" max="90" step="0.5" value="35.264" />
-          </div>
-          <div class="control-group">
-            <div class="control-label-row">
-              <span>Diagonal length</span>
-              <span class="value" id="lenDiag-value"></span>
+            <div class="control-group">
+              <div class="control-label-row">
+                <span>Diagonal length</span>
+                <input type="number" class="value value-num" id="lenDiag-value" inputmode="decimal" />
+              </div>
+              <input id="lenDiag" type="range" min="0.2" max="2.0" step="0.01" value="1.00" />
             </div>
-            <input id="lenDiag" type="range" min="0.2" max="2.0" step="0.01" value="1.00" disabled />
           </div>
           <div class="control-group">
             <div class="button-row">
@@ -287,14 +349,14 @@
           <div class="control-group">
             <div class="control-label-row">
               <span>Stroke Thickness</span>
-              <span class="value" id="thickness-value"></span>
+              <input type="number" class="value value-num" id="thickness-value" inputmode="decimal" />
             </div>
             <input id="thickness" type="range" min="0.05" max="0.3" step="0.005" value="0.075" />
           </div>
           <div class="control-group">
             <div class="control-label-row">
               <span>Center Radius</span>
-              <span class="value" id="sphereRadius-value"></span>
+              <input type="number" class="value value-num" id="sphereRadius-value" inputmode="decimal" />
             </div>
             <input id="sphereRadius" type="range" min="0.05" max="0.35" step="0.005" value="0.100" />
           </div>
@@ -312,16 +374,70 @@
           <div class="control-group">
             <div class="control-label-row">
               <span>Laser Thickness</span>
-              <span class="value" id="laserGuideThickness-value"></span>
+              <input type="number" class="value value-num" id="laserGuideThickness-value" inputmode="decimal" />
             </div>
             <input id="laserGuideThickness" type="range" min="0.002" max="0.04" step="0.001" value="0.002" />
           </div>
           <div class="control-group">
             <div class="control-label-row">
               <span>Laser Opacity</span>
-              <span class="value" id="laserGuideOpacity-value"></span>
+              <input type="number" class="value value-num" id="laserGuideOpacity-value" inputmode="decimal" />
             </div>
             <input id="laserGuideOpacity" type="range" min="0.1" max="1.0" step="0.01" value="0.95" />
+          </div>
+          <hr class="section-divider" />
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Plane grid</span>
+            </div>
+            <div class="button-row">
+              <button id="gridLinesToggle" type="button">Off</button>
+            </div>
+          </div>
+          <div id="planeGridDetailControls" style="display: none;">
+            <p class="hint" style="margin-top:6px;">Parallel to X: grid in the XY plane (±Y). Parallel to Y: XY (±X). Parallel to Z: XZ (±X). Count is lines per side of the origin; spacing in scene units. With laser guides off, the three axis lines are drawn as part of the grid.</p>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Parallel to X — lines / side</span>
+              <input type="number" class="value value-num" id="gridCountX-value" inputmode="decimal" />
+            </div>
+            <input id="gridCountX" type="range" min="0" max="24" step="1" value="4" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Parallel to X — spacing</span>
+              <input type="number" class="value value-num" id="gridSpacingX-value" inputmode="decimal" />
+            </div>
+            <input id="gridSpacingX" type="range" min="0.005" max="3" step="0.005" value="0.15" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Parallel to Y — lines / side</span>
+              <input type="number" class="value value-num" id="gridCountY-value" inputmode="decimal" />
+            </div>
+            <input id="gridCountY" type="range" min="0" max="24" step="1" value="4" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Parallel to Y — spacing</span>
+              <input type="number" class="value value-num" id="gridSpacingY-value" inputmode="decimal" />
+            </div>
+            <input id="gridSpacingY" type="range" min="0.005" max="3" step="0.005" value="0.15" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Parallel to Z — lines / side</span>
+              <input type="number" class="value value-num" id="gridCountZ-value" inputmode="decimal" />
+            </div>
+            <input id="gridCountZ" type="range" min="0" max="24" step="1" value="4" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Parallel to Z — spacing</span>
+              <input type="number" class="value value-num" id="gridSpacingZ-value" inputmode="decimal" />
+            </div>
+            <input id="gridSpacingZ" type="range" min="0.005" max="3" step="0.005" value="0.15" />
+          </div>
           </div>
         </div>
       </details>
@@ -338,10 +454,32 @@
             </div>
           </div>
           <div class="control-group">
+            <div class="control-label-row">
+              <span>Rotate X (°)</span>
+              <input type="number" class="value value-num" id="poseRotX-value" inputmode="decimal" />
+            </div>
+            <input id="poseRotX" type="range" min="-180" max="180" step="0.1" value="0" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Rotate Y (°)</span>
+              <input type="number" class="value value-num" id="poseRotY-value" inputmode="decimal" />
+            </div>
+            <input id="poseRotY" type="range" min="-180" max="180" step="0.1" value="0" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
+              <span>Rotate Z (°)</span>
+              <input type="number" class="value value-num" id="poseRotZ-value" inputmode="decimal" />
+            </div>
+            <input id="poseRotZ" type="range" min="-180" max="180" step="0.1" value="0" />
+          </div>
+          <p class="hint" style="margin-top:2px;">Local Euler rotation (Y-up, order XYZ). Note the three angles (and seed) to recreate a pose. Sliders are disabled while Auto Rotate is on.</p>
+          <div class="control-group">
             <div class="button-row">
               <button id="poseReset" type="button">Reset</button>
             </div>
-            <p class="hint" style="margin-top:6px;">Resets isometric view and turns off Auto Rotate.</p>
+            <p class="hint" style="margin-top:6px;">Zero rotation, default camera, and turns off Auto Rotate.</p>
           </div>
         </div>
       </details>
@@ -374,6 +512,15 @@
           <div id="gradientBackgroundControls" class="gradient-colors" style="display: none;">
             <div class="control-group">
               <div class="control-label-row">
+                <span>Gradient shape</span>
+              </div>
+              <div class="button-row">
+                <button id="gradientTypeLinear" type="button" class="primary">Linear</button>
+                <button id="gradientTypeRadial" type="button">Radial</button>
+              </div>
+            </div>
+            <div id="gradientLinearControls" class="control-group">
+              <div class="control-label-row">
                 <span>Align gradient to</span>
               </div>
               <select id="gradientAlignAxis" class="bg-select">
@@ -383,11 +530,99 @@
                 <option value="3">Fourth arm direction</option>
               </select>
             </div>
+            <div id="gradientRadialControls" class="control-group" style="display: none;">
+              <div class="control-label-row">
+                <span>Canvas behind radial</span>
+              </div>
+              <input id="gradientRadialCanvasBackground" type="color" value="#000000" />
+              <div class="control-label-row" style="margin-top:8px;">
+                <span>Radial size</span>
+                <input type="number" class="value value-num" id="gradientRadialRadius-value" inputmode="decimal" />
+              </div>
+              <input id="gradientRadialRadius" type="range" min="0.02" max="3" step="0.01" value="0.55" />
+              <div class="control-label-row" style="margin-top:8px;">
+                <span>Oval width</span>
+                <input type="number" class="value value-num" id="gradientRadialWidth-value" inputmode="decimal" />
+              </div>
+              <input id="gradientRadialWidth" type="range" min="0.05" max="8" step="0.01" value="1" />
+              <div class="control-label-row" style="margin-top:6px;">
+                <span>Oval height</span>
+                <input type="number" class="value value-num" id="gradientRadialHeight-value" inputmode="decimal" />
+              </div>
+              <input id="gradientRadialHeight" type="range" min="0.05" max="8" step="0.01" value="1" />
+              <div class="control-label-row" style="margin-top:6px;">
+                <span>Offset X</span>
+                <input type="number" class="value value-num" id="gradientRadialOffsetX-value" inputmode="decimal" />
+              </div>
+              <input id="gradientRadialOffsetX" type="range" min="-0.5" max="0.5" step="0.005" value="0" />
+              <div class="control-label-row" style="margin-top:6px;">
+                <span>Offset Y</span>
+                <input type="number" class="value value-num" id="gradientRadialOffsetY-value" inputmode="decimal" />
+              </div>
+              <input id="gradientRadialOffsetY" type="range" min="-0.5" max="0.5" step="0.005" value="0" />
+              <p class="hint" style="margin-top:4px;">The canvas color fills first; with 1 color stop, the radial fades from Color 1 to this canvas color. Size follows the view diagonal; width/height scale the oval (1 = circle). Offsets are a fraction of canvas width/height.</p>
+              <div class="control-label-row" style="margin-top:12px;">
+                <span>Second radial</span>
+                <button type="button" id="gradientRadial2Toggle">Off</button>
+              </div>
+              <div id="gradientRadial2DetailControls" class="control-group" style="display: none; margin-top:8px;">
+                <div class="control-label-row">
+                  <span>Radial 2 size</span>
+                  <input type="number" class="value value-num" id="gradientRadial2Radius-value" inputmode="decimal" />
+                </div>
+                <input id="gradientRadial2Radius" type="range" min="0.02" max="3" step="0.01" value="0.35" />
+                <div class="control-label-row" style="margin-top:8px;">
+                  <span>Oval width</span>
+                  <input type="number" class="value value-num" id="gradientRadial2Width-value" inputmode="decimal" />
+                </div>
+                <input id="gradientRadial2Width" type="range" min="0.05" max="8" step="0.01" value="1" />
+                <div class="control-label-row" style="margin-top:6px;">
+                  <span>Oval height</span>
+                  <input type="number" class="value value-num" id="gradientRadial2Height-value" inputmode="decimal" />
+                </div>
+                <input id="gradientRadial2Height" type="range" min="0.05" max="8" step="0.01" value="1" />
+                <div class="control-label-row" style="margin-top:6px;">
+                  <span>Offset X</span>
+                  <input type="number" class="value value-num" id="gradientRadial2OffsetX-value" inputmode="decimal" />
+                </div>
+                <input id="gradientRadial2OffsetX" type="range" min="-0.5" max="0.5" step="0.005" value="0.2" />
+                <div class="control-label-row" style="margin-top:6px;">
+                  <span>Offset Y</span>
+                  <input type="number" class="value value-num" id="gradientRadial2OffsetY-value" inputmode="decimal" />
+                </div>
+                <input id="gradientRadial2OffsetY" type="range" min="-0.5" max="0.5" step="0.005" value="-0.15" />
+                <div class="control-label-row" style="margin-top:10px;">
+                  <span>Radial 2 color stops</span>
+                </div>
+                <select id="gradientRadial2ColorCount" class="bg-select">
+                  <option value="1">1 color</option>
+                  <option value="2" selected>2 colors</option>
+                  <option value="3">3 colors</option>
+                  <option value="4">4 colors</option>
+                </select>
+                <div class="control-label-row" style="margin-top:8px;"><span>Color 1</span></div>
+                <input id="gradientRadial2Color0" type="color" value="#ffffff" />
+                <div class="control-group" id="gradientRadial2Color1-wrap" style="margin-top:6px;">
+                  <div class="control-label-row"><span>Color 2</span></div>
+                  <input id="gradientRadial2Color1" type="color" value="#1a1a1a" />
+                </div>
+                <div class="control-group" id="gradientRadial2Color2-wrap" style="margin-top:6px; display: none;">
+                  <div class="control-label-row"><span>Color 3</span></div>
+                  <input id="gradientRadial2Color2" type="color" value="#BA95BD" />
+                </div>
+                <div class="control-group" id="gradientRadial2Color3-wrap" style="margin-top:6px; display: none;">
+                  <div class="control-label-row"><span>Color 4</span></div>
+                  <input id="gradientRadial2Color3" type="color" value="#000000" />
+                </div>
+                <p class="hint" style="margin-top:6px;">Drawn on top of the first radial (same math). With 1 color stop, the edge fades to transparent so the layer below shows through.</p>
+              </div>
+            </div>
             <div class="control-group">
               <div class="control-label-row">
                 <span>Color stops</span>
               </div>
               <select id="gradientColorCount" class="bg-select">
+                <option value="1">1 color</option>
                 <option value="2">2 colors</option>
                 <option value="3" selected>3 colors</option>
                 <option value="4">4 colors</option>
@@ -397,7 +632,7 @@
               <div class="control-label-row"><span>Color 1</span></div>
               <input id="gradientColor0" type="color" value="#8a9a8e" />
             </div>
-            <div class="control-group">
+            <div class="control-group" id="gradientColor1-wrap">
               <div class="control-label-row"><span>Color 2</span></div>
               <input id="gradientColor1" type="color" value="#f5e6e8" />
             </div>
@@ -411,7 +646,7 @@
             </div>
           </div>
           <p class="hint" style="margin-top:8px;">
-            Gradient follows the projected axis in the view. PNG export includes the background.
+            Linear gradients follow the projected axis in the view. With 1 color stop, linear is a solid fill; radial uses Color 1 fading to the canvas color. In radial mode you can stack a second radial on top (toggle under the first radial controls). PNG export includes the background.
           </p>
         </div>
       </details>
