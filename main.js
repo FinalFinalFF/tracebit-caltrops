@@ -1861,6 +1861,15 @@ function applyShortcutFullRandom() {
   applyShortcutRandomCore();
   state.thickness = 0.05 + Math.random() * (0.3 - 0.05);
   state.sphereRadius = 0.05 + Math.random() * (0.35 - 0.05);
+  state.showGridLines = Math.random() < 0.5;
+  state.gridCountX = Math.floor(Math.random() * 25);
+  state.gridCountY = Math.floor(Math.random() * 25);
+  state.gridCountZ = Math.floor(Math.random() * 25);
+  const gsMin = 0.005;
+  const gsMax = 3;
+  state.gridSpacingX = gsMin + Math.random() * (gsMax - gsMin);
+  state.gridSpacingY = gsMin + Math.random() * (gsMax - gsMin);
+  state.gridSpacingZ = gsMin + Math.random() * (gsMax - gsMin);
 }
 
 function buildSvgRadialStopsInnerXml(n, colors, canvasBgForOneStop, transparentOneColorOuter) {
