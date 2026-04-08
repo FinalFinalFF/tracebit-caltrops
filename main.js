@@ -44,9 +44,9 @@ const LASER_GUIDE_DEFAULT_OPACITY = 0.95;
 const LASER_GUIDE_EPS = 1e-6;
 
 /** Default X / Y / Z arm lengths (sliders and Reset). */
-const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.0, lenY: 1.0, lenZ: 1.3, lenDiag: 1.0 });
+const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.0, lenY: 1.0, lenZ: 1.0, lenDiag: 1.0 });
 
-const DEFAULT_THICKNESS = 0.075;
+const DEFAULT_THICKNESS = 0.1;
 const DEFAULT_SPHERE_RADIUS = 0.1;
 
 /** Default gradient stops (Shortcuts Default / Vibes). */
