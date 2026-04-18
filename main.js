@@ -5,14 +5,18 @@ import { OrbitControls } from "./vendor/OrbitControls.js";
 
 let scene, camera, renderer, controls;
 let caltropGroup; // rotation tracker only — no visible children
-let centerDisc;
 let armMeshX, armMeshY, armMeshZ, armMeshDiag;
+/** Background-colored circles placed at arm-edge intersections to create inner fillets. */
+let filletCircles = [];
 let guideMeshX, guideMeshY, guideMeshZ, guideMeshDiag;
 let gridLineSegments;
 let gridLineMaterial;
 
 let bgCanvas;
 let bgTexture;
+/** 2D canvas overlay positioned over the WebGL canvas; used to draw inner fillets on top of the arms. */
+let filletOverlayCanvas;
+let filletOverlayCtx;
 /** Last projected arm directions in camera space (same order as arms in updateArmProjections). */
 let lastArmScreenProjection = [
   { px: 1, py: 0, projFactor: 1 },
@@ -49,7 +53,7 @@ const LASER_GUIDE_EPS = 1e-6;
 const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.0, lenY: 1.0, lenZ: 1.0, lenDiag: 1.0 });
 
 const DEFAULT_THICKNESS = 0.1;
-const DEFAULT_SPHERE_RADIUS = 0.1;
+const DEFAULT_FILLET_RADIUS = 0.06;
 
 /** Default gradient stops (Shortcuts Default / Vibes). */
 const DEFAULT_GRADIENT_COLORS = Object.freeze(["#8a9a8e", "#f5e6e8", "#c45c3e", "#2a1810"]);
@@ -81,9 +85,13 @@ const state = {
   fourthArmAzimuthDeg: DEFAULT_FOURTH_ARM_AZIMUTH_DEG,
   fourthArmElevationDeg: DEFAULT_FOURTH_ARM_ELEVATION_DEG,
   thickness: DEFAULT_THICKNESS,
-  sphereRadius: DEFAULT_SPHERE_RADIUS,
+  filletRadius: DEFAULT_FILLET_RADIUS,
   autoRotate: false,
   autoLength: false,
+  /** Minimum angle (deg) between any axis-plane and the viewing direction during Auto Rotate.
+   *  Higher values keep planes from going edge-on (less overlap of axis lines in the view).
+   *  ~35° = isometric pose / pure spin around the view axis. */
+  planeAngleLimitDeg: 45,
   showLaserGuides: true,
   laserGuideThickness: LASER_GUIDE_DEFAULT_THICKNESS,
   laserGuideOpacity: LASER_GUIDE_DEFAULT_OPACITY,
@@ -153,6 +161,17 @@ function init() {
   renderer.setSize(width, height);
   container.appendChild(renderer.domElement);
 
+  filletOverlayCanvas = document.createElement("canvas");
+  filletOverlayCanvas.style.position = "absolute";
+  filletOverlayCanvas.style.top = "0";
+  filletOverlayCanvas.style.left = "0";
+  filletOverlayCanvas.style.width = "100%";
+  filletOverlayCanvas.style.height = "100%";
+  filletOverlayCanvas.style.pointerEvents = "none";
+  container.appendChild(filletOverlayCanvas);
+  filletOverlayCtx = filletOverlayCanvas.getContext("2d");
+  resizeFilletOverlay(width, height);
+
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.06;
@@ -182,8 +201,12 @@ function init() {
   scene.add(armMeshZ);
   scene.add(armMeshDiag);
 
-  centerDisc = createCenterDisc();
-  scene.add(centerDisc);
+  // 6 arm pairs × 4 edge-intersection corners = 24 fillet circles max
+  for (let i = 0; i < 24; i++) {
+    const circle = createFilletCircle();
+    filletCircles.push(circle);
+    scene.add(circle);
+  }
 
   gridLineMaterial = new THREE.LineBasicMaterial({
     transparent: true,
@@ -217,11 +240,26 @@ function createArmRect() {
   return new THREE.Mesh(geom, mat);
 }
 
-function createCenterDisc() {
-  const geom = new THREE.CircleGeometry(1, 48);
-  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+function createFilletCircle() {
+  const geom = new THREE.CircleGeometry(1, 32);
+  // Color is synced to background each frame via updateFilletColors()
+  const mat = new THREE.MeshBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false });
   const mesh = new THREE.Mesh(geom, mat);
+  mesh.renderOrder = 1; // renders after arm rects
+  mesh.visible = false;
   return mesh;
+}
+
+/**
+ * Intersect two 2D lines defined by point + direction.
+ * Returns [x, y] or null if parallel.
+ */
+function lineIntersect2D(p1x, p1y, d1x, d1y, p2x, p2y, d2x, d2y) {
+  const cross = d1x * d2y - d1y * d2x;
+  if (Math.abs(cross) < 1e-6) return null;
+  const dx = p2x - p1x, dy = p2y - p1y;
+  const s = (dx * d2y - dy * d2x) / cross;
+  return [p1x + s * d1x, p1y + s * d1y];
 }
 
 function createGuideRect() {
@@ -254,6 +292,14 @@ function worldAxisHalfLength(worldDir, camRight, camUp, halfWidth, halfHeight) {
   return halfGuideLength / projFactor;
 }
 
+/** Sync fillet circle color to the current background (solid color only). */
+function updateFilletColors() {
+  const c = new THREE.Color(state.solidBackgroundColor);
+  filletCircles.forEach((circle) => {
+    if (circle.material) circle.material.color.copy(c);
+  });
+}
+
 function updateGuideMaterialVisuals() {
   [guideMeshX, guideMeshY, guideMeshZ, guideMeshDiag].forEach((guide) => {
     if (!guide || !guide.material) return;
@@ -271,7 +317,7 @@ function updateBitColorVisuals() {
   [armMeshX, armMeshY, armMeshZ, armMeshDiag].forEach((mesh) => {
     if (mesh && mesh.material) mesh.material.color.copy(c);
   });
-  if (centerDisc && centerDisc.material) centerDisc.material.color.copy(c);
+  updateFilletColors();
   [guideMeshX, guideMeshY, guideMeshZ, guideMeshDiag].forEach((guide) => {
     if (guide && guide.material) guide.material.color.copy(c);
   });
@@ -366,10 +412,127 @@ function updateArmProjections() {
     }
   });
 
-  if (centerDisc) {
-    centerDisc.quaternion.copy(camera.quaternion);
-    centerDisc.scale.setScalar(state.sphereRadius);
-    centerDisc.position.set(0, 0, 0);
+  updateFilletCircles(arms);
+}
+
+function updateFilletCircles(arms) {
+  // WebGL fillet circles aren't used — arms + fillets are fully drawn on the 2D overlay.
+  for (let i = 0; i < filletCircles.length; i++) filletCircles[i].visible = false;
+  // Hide the WebGL arm meshes too; the overlay is now authoritative for the logo shape.
+  [armMeshX, armMeshY, armMeshZ, armMeshDiag].forEach((m) => { if (m) m.visible = false; });
+
+  if (!filletOverlayCtx || !filletOverlayCanvas) return;
+
+  const canvasW = filletOverlayCanvas.width;
+  const canvasH = filletOverlayCanvas.height;
+  const ctx = filletOverlayCtx;
+  ctx.clearRect(0, 0, canvasW, canvasH);
+
+  const hw = state.thickness / 2;
+  const r = state.filletRadius;
+
+  const frustumW = camera.right - camera.left;
+  const scale = canvasW / frustumW;
+  const halfW = canvasW / 2;
+  const halfH = canvasH / 2;
+  const toPxX = (x) => halfW + x * scale;
+  const toPxY = (y) => halfH - y * scale;
+
+  // Each visible arm is rendered bidirectionally (−halfLen…+halfLen through origin).
+  const armList = [];
+  for (let i = 0; i < arms.length; i++) {
+    const arm = arms[i];
+    const proj = lastArmScreenProjection[i];
+    if (!arm.draw || proj.projFactor < LASER_GUIDE_EPS) continue;
+    const nx = proj.px / proj.projFactor;
+    const ny = proj.py / proj.projFactor;
+    const halfLen = (proj.projFactor * arm.len) / 2;
+    if (halfLen <= hw) continue;
+    armList.push({ nx, ny, halfLen });
+  }
+  if (armList.length === 0) return;
+
+  ctx.fillStyle = state.bitColorHex;
+
+  // Pass 1 — draw each arm as a rotated filled rectangle. Robust across all poses:
+  // the union is always a well-formed shape, no self-intersecting polygon walks.
+  for (const a of armList) {
+    const { nx, ny, halfLen } = a;
+    const lx = -ny, ly = nx; // left perpendicular
+    ctx.beginPath();
+    ctx.moveTo(toPxX( nx*halfLen + lx*hw), toPxY( ny*halfLen + ly*hw));
+    ctx.lineTo(toPxX( nx*halfLen - lx*hw), toPxY( ny*halfLen - ly*hw));
+    ctx.lineTo(toPxX(-nx*halfLen - lx*hw), toPxY(-ny*halfLen - ly*hw));
+    ctx.lineTo(toPxX(-nx*halfLen + lx*hw), toPxY(-ny*halfLen + ly*hw));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  if (r <= 0.0005) return;
+
+  // Pass 2 — at each concave corner between CCW-adjacent half-arms, add an additive
+  // fillet patch (material filling the sharp inside corner with a smooth arc).
+  const halves = [];
+  for (const a of armList) {
+    halves.push({ nx: a.nx, ny: a.ny, halfLen: a.halfLen, angle: Math.atan2(a.ny, a.nx) });
+    halves.push({ nx: -a.nx, ny: -a.ny, halfLen: a.halfLen, angle: Math.atan2(-a.ny, -a.nx) });
+  }
+  halves.sort((a, b) => a.angle - b.angle);
+
+  const n = halves.length;
+  for (let i = 0; i < n; i++) {
+    const h = halves[i];
+    const nxt = halves[(i + 1) % n];
+    let gap = nxt.angle - h.angle;
+    if (gap < 0) gap += Math.PI * 2;
+    // Skip degenerate pairs: near-parallel (no meaningful corner) or near-opposite (same axis).
+    if (gap <= 0.02 || gap >= Math.PI - 0.02) continue;
+
+    // h's LEFT edge meets nxt's RIGHT edge at the concave corner C.
+    const C = lineIntersect2D(
+      -h.ny*hw, h.nx*hw, h.nx, h.ny,
+      nxt.ny*hw, -nxt.nx*hw, nxt.nx, nxt.ny
+    );
+    if (!C) continue;
+
+    // Fade the fillet radius as C drifts outward from origin. Full radius when C is
+    // near the center (standard concave corners); tapers to zero as C approaches the
+    // tip — avoids tooth artifacts for near-parallel axes where C sits far out.
+    const maxArm = Math.max(h.halfLen, nxt.halfLen);
+    const dC = Math.hypot(C[0], C[1]);
+    const fadeStart = maxArm * 0.35;
+    const fadeEnd = maxArm * 0.7;
+    if (dC >= fadeEnd) continue;
+    const fade = dC <= fadeStart ? 1 : 1 - (dC - fadeStart) / (fadeEnd - fadeStart);
+    const radius = r * fade;
+    if (radius <= 0.0005) continue;
+
+    const gapHalf = gap / 2;
+    const tanHalf = Math.tan(gapHalf);
+    if (tanHalf <= 1e-6) continue;
+    let tanLen = radius / tanHalf;
+
+    // Clamp tanLen so tangent points stay within each arm's forward extent.
+    const cDotH = C[0]*h.nx + C[1]*h.ny;
+    const cDotN = C[0]*nxt.nx + C[1]*nxt.ny;
+    const availMax = Math.min(h.halfLen - cDotH, nxt.halfLen - cDotN);
+    if (availMax <= 1e-4) continue;
+    if (tanLen > availMax) tanLen = availMax;
+
+    const effR = tanLen * tanHalf;
+    if (effR <= 1e-4) continue;
+
+    const T1x = C[0] + h.nx * tanLen,   T1y = C[1] + h.ny * tanLen;
+    const T2x = C[0] + nxt.nx * tanLen, T2y = C[1] + nxt.ny * tanLen;
+
+    // Additive patch: T1 → arc (tangent at T1 and T2, in the non-material wedge) → T2 → C → T1.
+    // arcTo naturally places the arc on the small-angle side at C — the non-material wedge.
+    ctx.beginPath();
+    ctx.moveTo(toPxX(T1x), toPxY(T1y));
+    ctx.arcTo(toPxX(C[0]), toPxY(C[1]), toPxX(T2x), toPxY(T2y), effR * scale);
+    ctx.lineTo(toPxX(C[0]), toPxY(C[1]));
+    ctx.closePath();
+    ctx.fill();
   }
 }
 
@@ -387,7 +550,15 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
 
   renderer.setSize(width, height);
+  resizeFilletOverlay(width, height);
   resizeBackgroundCanvas();
+}
+
+function resizeFilletOverlay(cssW, cssH) {
+  if (!filletOverlayCanvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  filletOverlayCanvas.width = Math.max(1, Math.round(cssW * dpr));
+  filletOverlayCanvas.height = Math.max(1, Math.round(cssH * dpr));
 }
 
 function resizeBackgroundCanvas() {
@@ -480,6 +651,7 @@ function fillCanvasRadialGradientLayer(ctx, w, h, outerOneColorStop, radiusFrac,
 function updateBackground() {
   if (!bgCanvas || !bgTexture || !scene) return;
 
+  updateFilletColors();
   resizeBackgroundCanvas();
 
   if (state.backgroundMode === "solid") {
@@ -647,8 +819,23 @@ function animate() {
 
   if (state.autoRotate) {
     const t = performance.now() * 0.0003;
-    caltropGroup.rotation.y = t;
-    caltropGroup.rotation.x = t * 0.6;
+    // Compose rotation as: spin around the view axis + bounded tilt perpendicular to it.
+    // Spin-around-V preserves each axis's angle with V, so no plane can go edge-on.
+    // Tilt adds motion away from isometric; magnitude is capped by planeAngleLimitDeg.
+    const baselineDeg = 35.264; // all-axes plane angle at isometric pose
+    const limit = Math.max(0, state.planeAngleLimitDeg || 0);
+    const maxTiltDeg = Math.max(0, baselineDeg - limit);
+    const maxTiltRad = THREE.MathUtils.degToRad(maxTiltDeg);
+    const viewDir = new THREE.Vector3();
+    camera.getWorldDirection(viewDir);
+    const camRight = new THREE.Vector3();
+    camera.matrixWorld.extractBasis(camRight, new THREE.Vector3(), new THREE.Vector3());
+    const qSpin = new THREE.Quaternion().setFromAxisAngle(viewDir, t);
+    const qTilt = new THREE.Quaternion().setFromAxisAngle(
+      camRight,
+      Math.sin(t * 0.67) * maxTiltRad
+    );
+    caltropGroup.quaternion.copy(qTilt).multiply(qSpin);
     if (state._ui) syncPoseSlidersFromRotation();
   }
 
@@ -817,7 +1004,7 @@ function initUI() {
   const fourthArmAzimuthInput = document.getElementById("fourthArmAzimuth");
   const fourthArmElevationInput = document.getElementById("fourthArmElevation");
   const thicknessInput = document.getElementById("thickness");
-  const sphereRadiusInput = document.getElementById("sphereRadius");
+  const filletRadiusInput = document.getElementById("filletRadius");
   const laserGuideThicknessInput = document.getElementById("laserGuideThickness");
   const laserGuideOpacityInput = document.getElementById("laserGuideOpacity");
   const lenXValue = document.getElementById("lenX-value");
@@ -827,9 +1014,11 @@ function initUI() {
   const fourthArmAzimuthValue = document.getElementById("fourthArmAzimuth-value");
   const fourthArmElevationValue = document.getElementById("fourthArmElevation-value");
   const thicknessValue = document.getElementById("thickness-value");
-  const sphereRadiusValue = document.getElementById("sphereRadius-value");
+  const filletRadiusValue = document.getElementById("filletRadius-value");
   const laserGuideThicknessValue = document.getElementById("laserGuideThickness-value");
   const laserGuideOpacityValue = document.getElementById("laserGuideOpacity-value");
+  const planeAngleLimitInput = document.getElementById("planeAngleLimit");
+  const planeAngleLimitValue = document.getElementById("planeAngleLimit-value");
 
   const autoRotateToggle = document.getElementById("autoRotateToggle");
   const autoLengthToggle = document.getElementById("autoLengthToggle");
@@ -927,10 +1116,10 @@ function initUI() {
 
   state._ui = {
     lenXInput, lenYInput, lenZInput, lenDiagInput, fourthArmAzimuthInput, fourthArmElevationInput,
-    thicknessInput, sphereRadiusInput,
+    thicknessInput, filletRadiusInput,
     laserGuideThicknessInput, laserGuideOpacityInput,
     lenXValue, lenYValue, lenZValue, lenDiagValue, fourthArmAzimuthValue, fourthArmElevationValue,
-    thicknessValue, sphereRadiusValue,
+    thicknessValue, filletRadiusValue,
     laserGuideThicknessValue, laserGuideOpacityValue,
     fourthArmToggle,
     gradientRadialRadiusInput,
@@ -967,7 +1156,8 @@ function initUI() {
     if (fourthArmAzimuthValue) fourthArmAzimuthValue.value = state.fourthArmAzimuthDeg.toFixed(0);
     if (fourthArmElevationValue) fourthArmElevationValue.value = state.fourthArmElevationDeg.toFixed(1);
     thicknessValue.value = state.thickness.toFixed(3);
-    sphereRadiusValue.value = state.sphereRadius.toFixed(3);
+    filletRadiusValue.value = state.filletRadius.toFixed(3);
+    if (planeAngleLimitValue) planeAngleLimitValue.value = state.planeAngleLimitDeg.toFixed(0);
     laserGuideThicknessValue.value = state.laserGuideThickness.toFixed(3);
     laserGuideOpacityValue.value = state.laserGuideOpacity.toFixed(2);
     if (gradientRadialRadiusValue) gradientRadialRadiusValue.value = state.gradientRadialRadius.toFixed(2);
@@ -996,7 +1186,8 @@ function initUI() {
     if (fourthArmAzimuthInput) fourthArmAzimuthInput.value = state.fourthArmAzimuthDeg.toString();
     if (fourthArmElevationInput) fourthArmElevationInput.value = state.fourthArmElevationDeg.toString();
     thicknessInput.value = state.thickness.toString();
-    sphereRadiusInput.value = state.sphereRadius.toString();
+    filletRadiusInput.value = state.filletRadius.toString();
+    if (planeAngleLimitInput) planeAngleLimitInput.value = state.planeAngleLimitDeg.toString();
     laserGuideThicknessInput.value = state.laserGuideThickness.toString();
     laserGuideOpacityInput.value = state.laserGuideOpacity.toString();
     if (gradientRadialRadiusInput) gradientRadialRadiusInput.value = state.gradientRadialRadius.toString();
@@ -1065,7 +1256,8 @@ function initUI() {
     mirrorRangeToValueField(fourthArmElevationValue, fourthArmElevationInput, false);
   }
   mirrorRangeToValueField(thicknessValue, thicknessInput, false);
-  mirrorRangeToValueField(sphereRadiusValue, sphereRadiusInput, false);
+  mirrorRangeToValueField(filletRadiusValue, filletRadiusInput, false);
+  if (planeAngleLimitValue && planeAngleLimitInput) mirrorRangeToValueField(planeAngleLimitValue, planeAngleLimitInput, false);
   mirrorRangeToValueField(laserGuideThicknessValue, laserGuideThicknessInput, false);
   mirrorRangeToValueField(laserGuideOpacityValue, laserGuideOpacityInput, false);
   if (gradientRadialRadiusValue && gradientRadialRadiusInput) {
@@ -1380,10 +1572,17 @@ function initUI() {
     updateLengthDisplays();
   });
 
-  sphereRadiusInput.addEventListener("input", () => {
-    state.sphereRadius = parseFloat(sphereRadiusInput.value);
+  filletRadiusInput.addEventListener("input", () => {
+    state.filletRadius = parseFloat(filletRadiusInput.value);
     updateLengthDisplays();
   });
+
+  if (planeAngleLimitInput) {
+    planeAngleLimitInput.addEventListener("input", () => {
+      state.planeAngleLimitDeg = parseFloat(planeAngleLimitInput.value);
+      updateLengthDisplays();
+    });
+  }
 
   laserGuideThicknessInput.addEventListener("input", () => {
     state.laserGuideThickness = parseFloat(laserGuideThicknessInput.value);
@@ -1407,7 +1606,10 @@ function initUI() {
     wireNumericValueField(fourthArmElevationValue, fourthArmElevationInput, "fourthArmElevationDeg", false);
   }
   wireNumericValueField(thicknessValue, thicknessInput, "thickness", false);
-  wireNumericValueField(sphereRadiusValue, sphereRadiusInput, "sphereRadius", false);
+  wireNumericValueField(filletRadiusValue, filletRadiusInput, "filletRadius", false);
+  if (planeAngleLimitValue && planeAngleLimitInput) {
+    wireNumericValueField(planeAngleLimitValue, planeAngleLimitInput, "planeAngleLimitDeg", false);
+  }
   wireNumericValueField(laserGuideThicknessValue, laserGuideThicknessInput, "laserGuideThickness", false);
   wireNumericValueField(laserGuideOpacityValue, laserGuideOpacityInput, "laserGuideOpacity", false);
   if (gradientRadialRadiusValue && gradientRadialRadiusInput) {
@@ -1721,7 +1923,7 @@ function applyShortcutDefault() {
   state.showLaserGuides = true;
   state.showGridLines = false;
   state.thickness = DEFAULT_THICKNESS;
-  state.sphereRadius = DEFAULT_SPHERE_RADIUS;
+  state.filletRadius = DEFAULT_FILLET_RADIUS;
   state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
   state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
   state.lenX = DEFAULT_ARM_LENGTHS.lenX;
@@ -1763,7 +1965,7 @@ function applyShortcutAuto() {
   state.showLaserGuides = true;
   state.showGridLines = false;
   state.thickness = DEFAULT_THICKNESS;
-  state.sphereRadius = DEFAULT_SPHERE_RADIUS;
+  state.filletRadius = DEFAULT_FILLET_RADIUS;
   state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
   state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
   state.showFourthArm = false;
@@ -1774,41 +1976,61 @@ function applyShortcutAuto() {
 }
 
 function applyShortcutVibes() {
+  state.lenX = 1.25;
+  state.lenY = 1.0;
+  state.lenZ = 1.5;
+  state.lenDiag = 1.0;
+  state.showFourthArm = false;
+  state.fourthArmAzimuthDeg = 45;
+  state.fourthArmElevationDeg = 35.5;
+  state.thickness = 0.1;
+  state.filletRadius = 0.025;
+  state.autoRotate = true;
+  state.autoLength = true;
+  state.planeAngleLimitDeg = 8;
+
+  state.bitColorHex = "#1c1c1c";
+  state.solidBackgroundColor = "#000000";
   state.backgroundMode = "gradient";
-  state.gradientType = Math.random() < 0.5 ? "linear" : "radial";
-  state.gradientRadialRadius = 0.35 + Math.random() * 0.45;
-  state.gradientRadialWidth = 0.55 + Math.random() * 1.2;
-  state.gradientRadialHeight = 0.55 + Math.random() * 1.2;
-  state.gradientRadialOffsetX = (Math.random() - 0.5) * 0.5;
-  state.gradientRadialOffsetY = (Math.random() - 0.5) * 0.5;
-  state.gradientAlignAxis = Math.floor(Math.random() * 4);
-  state.gradientColorCount = 3;
-  state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
-  if (state.gradientType === "radial" && Math.random() < 0.45) {
-    state.gradientRadial2Enabled = true;
-    state.gradientRadial2Radius = 0.2 + Math.random() * 0.55;
-    state.gradientRadial2Width = 0.55 + Math.random() * 1.2;
-    state.gradientRadial2Height = 0.55 + Math.random() * 1.2;
-    state.gradientRadial2OffsetX = (Math.random() - 0.5) * 0.55;
-    state.gradientRadial2OffsetY = (Math.random() - 0.5) * 0.55;
-    state.gradientRadial2ColorCount = 1 + Math.floor(Math.random() * 4);
-    for (let i = 0; i < 4; i++) {
-      state.gradientRadial2Colors[i] = randomHexColor();
-    }
-  } else {
-    state.gradientRadial2Enabled = false;
-  }
-  state.bitColorHex = "#000000";
-  state.autoRotate = false;
-  state.autoLength = false;
-  state.thickness = DEFAULT_THICKNESS;
-  state.sphereRadius = DEFAULT_SPHERE_RADIUS;
-  state.showLaserGuides = true;
-  state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
-  state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
-  state.seed = Math.floor(Math.random() * 100000) + 1;
-  applySeed(state.seed);
+  state.gradientType = "radial";
+  state.gradientColorCount = 1;
+  state.gradientColors = ["#8a9a8e", "#f5e6e8", "#c45c3e", "#2a1810"];
+  state.gradientAlignAxis = 0;
+  state.gradientRadialCanvasBackground = "#f5e6e8";
+  state.gradientRadialRadius = 0.39;
+  state.gradientRadialWidth = 1.35;
+  state.gradientRadialHeight = 1.0;
+  state.gradientRadialOffsetX = 0.125;
+  state.gradientRadialOffsetY = 0.025;
+  state.gradientRadial2Enabled = true;
+  state.gradientRadial2Radius = 0.22;
+  state.gradientRadial2Width = 1.54;
+  state.gradientRadial2Height = 2.21;
+  state.gradientRadial2OffsetX = 0.09;
+  state.gradientRadial2OffsetY = -0.15;
+  state.gradientRadial2ColorCount = 1;
+  state.gradientRadial2Colors = ["#ffb2b5", "#1a1a1a", "#ba95bd", "#000000"];
+
+  state.showLaserGuides = false;
+  state.laserGuideThickness = 0.002;
+  state.laserGuideOpacity = 1.0;
+
+  state.showGridLines = true;
+  state.gridCountX = 6;
+  state.gridCountY = 4;
+  state.gridCountZ = 2;
+  state.gridSpacingX = 0.75;
+  state.gridSpacingY = 1.0;
+  state.gridSpacingZ = 1.25;
+
+  state.seed = 1;
+  applySeed(1);
   resetCameraToDefault();
+  caltropGroup.rotation.set(
+    THREE.MathUtils.degToRad(79.6),
+    THREE.MathUtils.degToRad(59.4),
+    THREE.MathUtils.degToRad(16.3)
+  );
 }
 
 function applyShortcutRandomCore(pickColor = randomHexColor) {
@@ -1865,7 +2087,7 @@ function applyShortcutRandom() {
 function applyShortcutFullRandom() {
   applyShortcutRandomCore(randomPalettePresetColor);
   state.thickness = 0.05 + Math.random() * (0.3 - 0.05);
-  state.sphereRadius = 0.05 + Math.random() * (0.35 - 0.05);
+  state.filletRadius = 0.05 + Math.random() * (0.35 - 0.05);
   state.showGridLines = Math.random() < 0.5;
   state.gridCountX = Math.floor(Math.random() * 25);
   state.gridCountY = Math.floor(Math.random() * 25);
@@ -2086,10 +2308,13 @@ function buildCurrentSvg() {
   }
 
   const thicknessPx = state.thickness * pxPerUnit;
-  const radiusPx = state.sphereRadius * pxPerUnit;
+  const filletRadiusPx = state.filletRadius * pxPerUnit;
   const halfWidth = half;
   const halfHeight = half;
   const bitFill = state.bitColorHex;
+
+  // Build projected arm data (screen direction + length) for fillet computation
+  const projectedArms = [];
 
   let guidesSvg = "";
   let armsSvg = "";
@@ -2100,6 +2325,8 @@ function buildCurrentSvg() {
     const angle = Math.atan2(py, px);
     const projFactor = Math.sqrt(px * px + py * py);
     const projectedLen = projFactor * len * pxPerUnit;
+
+    projectedArms.push({ px, py, projFactor });
 
     // SVG Y-axis points down, camera Y-axis points up — negate angle
     const rotateDeg = (-angle * 180) / Math.PI;
@@ -2121,9 +2348,35 @@ function buildCurrentSvg() {
     }
   });
 
-  const circleSvg = `<circle cx="${half}" cy="${half}" r="${radiusPx}" fill="${bitFill}" />`;
+  // Inner fillet circles: background-colored circles at each arm-edge intersection
+  let filletSvg = "";
+  if (filletRadiusPx > 0.5) {
+    const bgFill = state.backgroundMode === "solid" ? state.solidBackgroundColor : "#000000";
+    const hw = (state.thickness / 2) * pxPerUnit;
+    for (let i = 0; i < projectedArms.length; i++) {
+      for (let j = i + 1; j < projectedArms.length; j++) {
+        const a = projectedArms[i], b = projectedArms[j];
+        if (a.projFactor < LASER_GUIDE_EPS || b.projFactor < LASER_GUIDE_EPS) continue;
+        // Normalized screen directions (SVG: y-down, so negate py)
+        const ax = a.px / a.projFactor, ay = -(a.py / a.projFactor);
+        const bx = b.px / b.projFactor, by = -(b.py / b.projFactor);
+        const aEdges = [[-ay * hw, ax * hw], [ay * hw, -ax * hw]];
+        const bEdges = [[-by * hw, bx * hw], [by * hw, -bx * hw]];
+        const maxDistPx = state.thickness * 2.5 * pxPerUnit;
+        const maxDistPxSq = maxDistPx * maxDistPx;
+        for (const [pAx, pAy] of aEdges) {
+          for (const [pBx, pBy] of bEdges) {
+            const pt = lineIntersect2D(pAx, pAy, ax, ay, pBx, pBy, bx, by);
+            if (!pt) continue;
+            if (pt[0] * pt[0] + pt[1] * pt[1] > maxDistPxSq) continue;
+            filletSvg += `<circle cx="${half + pt[0]}" cy="${half + pt[1]}" r="${filletRadiusPx}" fill="${bgFill}" />`;
+          }
+        }
+      }
+    }
+  }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">${bgLayer}${gridLayer}${guidesSvg}${armsSvg}${circleSvg}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">${bgLayer}${gridLayer}${guidesSvg}${armsSvg}${filletSvg}</svg>`;
 }
 
 window.addEventListener("DOMContentLoaded", init);
