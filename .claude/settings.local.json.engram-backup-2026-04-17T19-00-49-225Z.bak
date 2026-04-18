@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__blender__execute_blender_code",
+      "mcp__blender__get_scene_info",
+      "Bash(lsof -iTCP -sTCP:LISTEN)",
+      "Bash(lsof -iTCP:9000 -sTCP:LISTEN)",
+      "Bash(lsof -iTCP:9001 -sTCP:LISTEN)",
+      "Bash(lsof -iTCP:8765 -sTCP:LISTEN)",
+      "Bash(lsof *)",
+      "mcp__blender__get_viewport_screenshot",
+      "Read(//Users/pete/Desktop/**)",
+      "Bash(open *)",
+      "Bash(python -m http.server 8000)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/)",
+      "Bash(python -m http.server 8080)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/)",
+      "Bash(python3 -m http.server 8080)"
+    ]
+  }
+}
