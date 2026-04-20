@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **SVG export now matches the rendered mark.** Replaced the subtractive fillet approach (background-colored circles punched at arm-edge intersections, which left visible dots on contrasting backgrounds) with the same additive arc-patch logic used by the canvas overlay — concave corners between CCW-adjacent half-arms get a bit-colored arc that bulges away from the corner. PNG and SVG output now agree.
+
+### Changed
+
+- **Default geometry** re-baselined: arm lengths **X 2.0 / Y 1.0 / Z 2.0**, fillet radius **0.01**, laser guides **off**, and camera position `(4.21, 0.91, 5.42)` (new `DEFAULT_CAMERA_POSITION` constant; used by init, Pose Reset, and the Default shortcut).
+
 ### Added
 
 - **Inner fillets** at the concave inside corners of the mark (replaces the center disc). Rendered via a 2D overlay: each arm drawn as a rotated rectangle, then an additive arc patch at each CCW-adjacent concave corner. Radius fades as the corner drifts outward from origin, so near-parallel axes no longer produce tooth artifacts or floating rectangles.

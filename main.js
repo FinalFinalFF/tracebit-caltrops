@@ -50,10 +50,11 @@ const LASER_GUIDE_DEFAULT_OPACITY = 0.95;
 const LASER_GUIDE_EPS = 1e-6;
 
 /** Default X / Y / Z arm lengths (sliders and Reset). */
-const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.0, lenY: 1.0, lenZ: 1.0, lenDiag: 1.0 });
+const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 2.0, lenY: 1.0, lenZ: 2.0, lenDiag: 1.0 });
 
 const DEFAULT_THICKNESS = 0.1;
-const DEFAULT_FILLET_RADIUS = 0.06;
+const DEFAULT_FILLET_RADIUS = 0.01;
+const DEFAULT_CAMERA_POSITION = Object.freeze({ x: 4.21, y: 0.91, z: 5.42 });
 
 /** Default gradient stops (Shortcuts Default / Vibes). */
 const DEFAULT_GRADIENT_COLORS = Object.freeze(["#8a9a8e", "#f5e6e8", "#c45c3e", "#2a1810"]);
@@ -92,7 +93,7 @@ const state = {
    *  Higher values keep planes from going edge-on (less overlap of axis lines in the view).
    *  ~35° = isometric pose / pure spin around the view axis. */
   planeAngleLimitDeg: 45,
-  showLaserGuides: true,
+  showLaserGuides: false,
   laserGuideThickness: LASER_GUIDE_DEFAULT_THICKNESS,
   laserGuideOpacity: LASER_GUIDE_DEFAULT_OPACITY,
   seed: 1,
@@ -153,7 +154,7 @@ function init() {
     0.1,
     50
   );
-  camera.position.set(4, 4, 4);
+  camera.position.set(DEFAULT_CAMERA_POSITION.x, DEFAULT_CAMERA_POSITION.y, DEFAULT_CAMERA_POSITION.z);
   camera.lookAt(0, 0, 0);
 
   renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -1878,7 +1879,7 @@ function applySeed(seed) {
 }
 
 function resetCameraToDefault() {
-  camera.position.set(4, 4, 4);
+  camera.position.set(DEFAULT_CAMERA_POSITION.x, DEFAULT_CAMERA_POSITION.y, DEFAULT_CAMERA_POSITION.z);
   camera.lookAt(0, 0, 0);
   controls.target.set(0, 0, 0);
   controls.update();
@@ -1920,7 +1921,7 @@ function applyShortcutDefault() {
   state.bitColorHex = "#ffffff";
   state.autoRotate = false;
   state.autoLength = false;
-  state.showLaserGuides = true;
+  state.showLaserGuides = false;
   state.showGridLines = false;
   state.thickness = DEFAULT_THICKNESS;
   state.filletRadius = DEFAULT_FILLET_RADIUS;
@@ -2308,7 +2309,6 @@ function buildCurrentSvg() {
   }
 
   const thicknessPx = state.thickness * pxPerUnit;
-  const filletRadiusPx = state.filletRadius * pxPerUnit;
   const halfWidth = half;
   const halfHeight = half;
   const bitFill = state.bitColorHex;
@@ -2326,7 +2326,7 @@ function buildCurrentSvg() {
     const projFactor = Math.sqrt(px * px + py * py);
     const projectedLen = projFactor * len * pxPerUnit;
 
-    projectedArms.push({ px, py, projFactor });
+    projectedArms.push({ px, py, projFactor, len });
 
     // SVG Y-axis points down, camera Y-axis points up — negate angle
     const rotateDeg = (-angle * 180) / Math.PI;
@@ -2348,31 +2348,78 @@ function buildCurrentSvg() {
     }
   });
 
-  // Inner fillet circles: background-colored circles at each arm-edge intersection
+  // Inner fillets: additive arc patches at concave corners (mirrors updateFilletCircles).
+  // Computed in world Y-up; flipped to SVG Y-down at emit time.
   let filletSvg = "";
-  if (filletRadiusPx > 0.5) {
-    const bgFill = state.backgroundMode === "solid" ? state.solidBackgroundColor : "#000000";
-    const hw = (state.thickness / 2) * pxPerUnit;
-    for (let i = 0; i < projectedArms.length; i++) {
-      for (let j = i + 1; j < projectedArms.length; j++) {
-        const a = projectedArms[i], b = projectedArms[j];
-        if (a.projFactor < LASER_GUIDE_EPS || b.projFactor < LASER_GUIDE_EPS) continue;
-        // Normalized screen directions (SVG: y-down, so negate py)
-        const ax = a.px / a.projFactor, ay = -(a.py / a.projFactor);
-        const bx = b.px / b.projFactor, by = -(b.py / b.projFactor);
-        const aEdges = [[-ay * hw, ax * hw], [ay * hw, -ax * hw]];
-        const bEdges = [[-by * hw, bx * hw], [by * hw, -bx * hw]];
-        const maxDistPx = state.thickness * 2.5 * pxPerUnit;
-        const maxDistPxSq = maxDistPx * maxDistPx;
-        for (const [pAx, pAy] of aEdges) {
-          for (const [pBx, pBy] of bEdges) {
-            const pt = lineIntersect2D(pAx, pAy, ax, ay, pBx, pBy, bx, by);
-            if (!pt) continue;
-            if (pt[0] * pt[0] + pt[1] * pt[1] > maxDistPxSq) continue;
-            filletSvg += `<circle cx="${half + pt[0]}" cy="${half + pt[1]}" r="${filletRadiusPx}" fill="${bgFill}" />`;
-          }
-        }
-      }
+  const hw = state.thickness / 2;
+  const r = state.filletRadius;
+  if (r > 0.0005) {
+    const halves = [];
+    for (const arm of projectedArms) {
+      if (arm.projFactor < LASER_GUIDE_EPS) continue;
+      const nx = arm.px / arm.projFactor;
+      const ny = arm.py / arm.projFactor;
+      const halfLen = (arm.projFactor * arm.len) / 2;
+      if (halfLen <= hw) continue;
+      halves.push({ nx, ny, halfLen, angle: Math.atan2(ny, nx) });
+      halves.push({ nx: -nx, ny: -ny, halfLen, angle: Math.atan2(-ny, -nx) });
+    }
+    halves.sort((a, b) => a.angle - b.angle);
+
+    const toSx = (x) => half + x * pxPerUnit;
+    const toSy = (y) => half - y * pxPerUnit;
+
+    const n = halves.length;
+    for (let i = 0; i < n; i++) {
+      const h = halves[i];
+      const nxt = halves[(i + 1) % n];
+      let gap = nxt.angle - h.angle;
+      if (gap < 0) gap += Math.PI * 2;
+      if (gap <= 0.02 || gap >= Math.PI - 0.02) continue;
+
+      const C = lineIntersect2D(
+        -h.ny * hw, h.nx * hw, h.nx, h.ny,
+        nxt.ny * hw, -nxt.nx * hw, nxt.nx, nxt.ny
+      );
+      if (!C) continue;
+
+      const maxArm = Math.max(h.halfLen, nxt.halfLen);
+      const dC = Math.hypot(C[0], C[1]);
+      const fadeStart = maxArm * 0.35;
+      const fadeEnd = maxArm * 0.7;
+      if (dC >= fadeEnd) continue;
+      const fade = dC <= fadeStart ? 1 : 1 - (dC - fadeStart) / (fadeEnd - fadeStart);
+      const radius = r * fade;
+      if (radius <= 0.0005) continue;
+
+      const gapHalf = gap / 2;
+      const tanHalf = Math.tan(gapHalf);
+      if (tanHalf <= 1e-6) continue;
+      let tanLen = radius / tanHalf;
+
+      const cDotH = C[0] * h.nx + C[1] * h.ny;
+      const cDotN = C[0] * nxt.nx + C[1] * nxt.ny;
+      const availMax = Math.min(h.halfLen - cDotH, nxt.halfLen - cDotN);
+      if (availMax <= 1e-4) continue;
+      if (tanLen > availMax) tanLen = availMax;
+
+      const effR = tanLen * tanHalf;
+      if (effR <= 1e-4) continue;
+
+      const T1x = C[0] + h.nx * tanLen, T1y = C[1] + h.ny * tanLen;
+      const T2x = C[0] + nxt.nx * tanLen, T2y = C[1] + nxt.ny * tanLen;
+
+      const T1sx = toSx(T1x), T1sy = toSy(T1y);
+      const T2sx = toSx(T2x), T2sy = toSy(T2y);
+      const Csx = toSx(C[0]), Csy = toSy(C[1]);
+      const effRpx = effR * pxPerUnit;
+
+      // Arc bulges away from C — pick sweep-flag so the arc lies on the opposite
+      // side of the T1→T2 chord from C (sign check via 2D cross in SVG space).
+      const crossSvg = (T2sx - T1sx) * (Csy - T1sy) - (T2sy - T1sy) * (Csx - T1sx);
+      const sweep = crossSvg < 0 ? 1 : 0;
+
+      filletSvg += `<path d="M ${T1sx} ${T1sy} A ${effRpx} ${effRpx} 0 0 ${sweep} ${T2sx} ${T2sy} L ${Csx} ${Csy} Z" fill="${bitFill}" />`;
     }
   }
 

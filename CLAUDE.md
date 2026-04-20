@@ -27,9 +27,19 @@ python -m http.server
 - **`applySeed(seed)`** — single `mulberry32(seed)` stream: three draws for arm lengths, three for Euler rotation.
 - Shortcut handlers: **`applyShortcutDefault`** (static lengths + zero rotation, no auto motion), **`applyShortcutAuto`** (seed 1 + **`applySeed(1)`** + auto rotate/length), **`applyShortcutVibes`**, **`applyShortcutRandom`** (wide randomization but keeps stroke thickness and center radius), **`applyShortcutFullRandom`** (also randomizes those two); shared defaults in **`DEFAULT_ARM_LENGTHS`**, **`DEFAULT_THICKNESS`**, **`DEFAULT_SPHERE_RADIUS`**, **`DEFAULT_GRADIENT_COLORS`**, laser defaults.
 
+**Export parity:** SVG export duplicates the renderer's projection math in JS. Any change to `updateArmProjections()`, camera setup, or arm geometry must be mirrored in `buildCurrentSvg()` or PNG and SVG outputs will diverge.
+
+**UI sync:** After any programmatic mutation to `state` (shortcut handlers, preset loads), call `syncFullUI()` — otherwise sidebar controls drift from the rendered scene.
+
 ## Vendored Dependencies
 
 All in `vendor/` — loaded via an import map in the HTML (`"three"` maps to `vendor/three.module.min.js`):
 
 - `three.module.min.js` — Three.js core
 - `OrbitControls.js` — camera orbit controls
+
+## Sibling Files
+
+- `blender_caltrop.py` — standalone Blender script that builds a 3D caltrop matching the Three.js defaults (`ARM_HALF`, `THICKNESS`, `SPHERE_R`). Keep in sync with `DEFAULT_*` constants in `main.js` if those change.
+- `NOTES.md` — default-geometry tables and preset-behavior matrix.
+- `CHANGELOG.md` — log notable changes here when adding shortcuts, defaults, or export behavior.
