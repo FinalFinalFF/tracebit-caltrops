@@ -10,7 +10,8 @@ All notable changes to this project are documented here.
 
 ### Changed
 
-- **Default geometry** re-baselined: arm lengths **X 2.0 / Y 1.0 / Z 2.0**, fillet radius **0.01**, laser guides **off**, and camera position `(4.21, 0.91, 5.42)` (new `DEFAULT_CAMERA_POSITION` constant; used by init, Pose Reset, and the Default shortcut).
+- **Default pose** added: `DEFAULT_POSE_EULER_DEG = { x: −40.5°, y: 20°, z: −84° }`. Applied on load, by the Default shortcut, and by Pose Reset (previously all reset to `0, 0, 0`).
+- **Default geometry** re-baselined to match the target logo silhouette: arm lengths **X 1.4 / Y 1.0 / Z 1.4**, stroke thickness 0.1, fillet radius 0.01, laser guides off, camera position `(1.17, −0.12, 6.82)` (was `(4.21, 0.91, 5.42)`).
 
 ### Added
 

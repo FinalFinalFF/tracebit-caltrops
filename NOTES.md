@@ -6,15 +6,16 @@ Use a static server from this directory (`python -m http.server` or any port). I
 
 ## Default geometry (sliders)
 
-Defined in `main.js` as **`DEFAULT_ARM_LENGTHS`**, **`DEFAULT_THICKNESS`**, **`DEFAULT_SPHERE_RADIUS`**:
+Defined in `main.js` as **`DEFAULT_ARM_LENGTHS`**, **`DEFAULT_THICKNESS`**, **`DEFAULT_FILLET_RADIUS`**, **`DEFAULT_POSE_EULER_DEG`**:
 
 | Control | Value |
 |---------|-------|
-| X / Y / Z length | **1.00** / **1.00** / **1.30** |
-| Stroke thickness | **0.075** |
-| Center radius | **0.100** |
+| X / Y / Z length | **1.4** / **1.0** / **1.4** |
+| Stroke thickness | **0.1** |
+| Fillet radius | **0.01** |
+| Pose X / Y / Z | **−40.5°** / **20°** / **−84°** |
 
-**Reset** (Arms) restores `DEFAULT_ARM_LENGTHS` and turns off Auto Length. **Default** shortcut restores these plus stroke/center radius and laser defaults.
+**Reset** (Arms) restores `DEFAULT_ARM_LENGTHS` and turns off Auto Length. **Pose Reset** restores `DEFAULT_POSE_EULER_DEG` and the default camera. **Default** shortcut restores all of the above plus laser defaults.
 
 ## Preset shortcuts
 

@@ -50,11 +50,14 @@ const LASER_GUIDE_DEFAULT_OPACITY = 0.95;
 const LASER_GUIDE_EPS = 1e-6;
 
 /** Default X / Y / Z arm lengths (sliders and Reset). */
-const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 2.0, lenY: 1.0, lenZ: 2.0, lenDiag: 1.0 });
+const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.4, lenY: 1.0, lenZ: 1.4, lenDiag: 1.0 });
 
 const DEFAULT_THICKNESS = 0.1;
 const DEFAULT_FILLET_RADIUS = 0.01;
-const DEFAULT_CAMERA_POSITION = Object.freeze({ x: 4.21, y: 0.91, z: 5.42 });
+const DEFAULT_CAMERA_POSITION = Object.freeze({ x: 1.1655, y: -0.1203, z: 6.8232 });
+/** Caltrop group rotation applied on load and by the Default shortcut / Pose Reset. */
+const DEFAULT_POSE_EULER_DEG = Object.freeze({ x: -40.5, y: 20, z: -84 });
+const DEG2RAD = Math.PI / 180;
 
 /** Default gradient stops (Shortcuts Default / Vibes). */
 const DEFAULT_GRADIENT_COLORS = Object.freeze(["#8a9a8e", "#f5e6e8", "#c45c3e", "#2a1810"]);
@@ -1722,11 +1725,12 @@ function initUI() {
   wirePoseDegValueField(poseRotZValue, poseRotZInput);
 
   poseResetBtn.addEventListener("click", () => {
-    caltropGroup.rotation.set(0, 0, 0);
-    camera.position.set(4, 4, 4);
-    camera.lookAt(0, 0, 0);
-    controls.target.set(0, 0, 0);
-    controls.update();
+    caltropGroup.rotation.set(
+      DEFAULT_POSE_EULER_DEG.x * DEG2RAD,
+      DEFAULT_POSE_EULER_DEG.y * DEG2RAD,
+      DEFAULT_POSE_EULER_DEG.z * DEG2RAD
+    );
+    resetCameraToDefault();
     state.autoRotate = false;
     updateToggleButtons();
     syncPoseSlidersFromRotation();
@@ -1846,7 +1850,11 @@ function initUI() {
     syncFullUI();
   });
 
-  caltropGroup.rotation.set(0, 0, 0);
+  caltropGroup.rotation.set(
+    DEFAULT_POSE_EULER_DEG.x * DEG2RAD,
+    DEFAULT_POSE_EULER_DEG.y * DEG2RAD,
+    DEFAULT_POSE_EULER_DEG.z * DEG2RAD
+  );
   resetCameraToDefault();
   syncFullUI();
 }
@@ -1934,7 +1942,11 @@ function applyShortcutDefault() {
   state.showFourthArm = false;
   state.fourthArmAzimuthDeg = DEFAULT_FOURTH_ARM_AZIMUTH_DEG;
   state.fourthArmElevationDeg = DEFAULT_FOURTH_ARM_ELEVATION_DEG;
-  caltropGroup.rotation.set(0, 0, 0);
+  caltropGroup.rotation.set(
+    DEFAULT_POSE_EULER_DEG.x * DEG2RAD,
+    DEFAULT_POSE_EULER_DEG.y * DEG2RAD,
+    DEFAULT_POSE_EULER_DEG.z * DEG2RAD
+  );
   resetCameraToDefault();
 }
 
