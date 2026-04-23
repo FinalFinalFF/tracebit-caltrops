@@ -154,8 +154,8 @@ function init() {
     (frustumSize * aspect) / 2,
     frustumSize / 2,
     frustumSize / -2,
-    0.1,
-    50
+    0.01,
+    10000
   );
   camera.position.set(DEFAULT_CAMERA_POSITION.x, DEFAULT_CAMERA_POSITION.y, DEFAULT_CAMERA_POSITION.z);
   camera.lookAt(0, 0, 0);
@@ -296,6 +296,84 @@ function worldAxisHalfLength(worldDir, camRight, camUp, halfWidth, halfHeight) {
   return halfGuideLength / projFactor;
 }
 
+/**
+ * Clip a world-space line (origin + t*dir, t ∈ ℝ) to the orthographic frustum.
+ * Returns [tMin, tMax] in world units along `dir`, or null if the line misses the viewport.
+ * Assumes `dir` is a unit vector and the camera is looking at controls.target (so the frustum
+ * is axis-aligned in the (camRight, camUp) plane centered at the camera).
+ */
+function clipLineToOrthoFrustum(origin, dir, camPos, camRight, camUp, halfW, halfH) {
+  const relX = origin.x - camPos.x;
+  const relY = origin.y - camPos.y;
+  const relZ = origin.z - camPos.z;
+  const r0 = relX * camRight.x + relY * camRight.y + relZ * camRight.z;
+  const u0 = relX * camUp.x + relY * camUp.y + relZ * camUp.z;
+  const dr = dir.dot(camRight);
+  const du = dir.dot(camUp);
+
+  let tMin = -Infinity;
+  let tMax = Infinity;
+  if (Math.abs(dr) > LASER_GUIDE_EPS) {
+    const a = (-halfW - r0) / dr;
+    const b = (halfW - r0) / dr;
+    tMin = Math.max(tMin, Math.min(a, b));
+    tMax = Math.min(tMax, Math.max(a, b));
+  } else if (Math.abs(r0) > halfW) {
+    return null;
+  }
+  if (Math.abs(du) > LASER_GUIDE_EPS) {
+    const a = (-halfH - u0) / du;
+    const b = (halfH - u0) / du;
+    tMin = Math.max(tMin, Math.min(a, b));
+    tMax = Math.min(tMax, Math.max(a, b));
+  } else if (Math.abs(u0) > halfH) {
+    return null;
+  }
+  if (!(tMax > tMin)) return null;
+  return [tMin, tMax];
+}
+
+function pushGridLineClipped(flat, origin, dir, camPos, camRight, camUp, halfW, halfH) {
+  const range = clipLineToOrthoFrustum(origin, dir, camPos, camRight, camUp, halfW, halfH);
+  if (!range) return false;
+  const [t0, t1] = range;
+  flat.push(
+    origin.x + dir.x * t0,
+    origin.y + dir.y * t0,
+    origin.z + dir.z * t0,
+    origin.x + dir.x * t1,
+    origin.y + dir.y * t1,
+    origin.z + dir.z * t1
+  );
+  return true;
+}
+
+/**
+ * Draw a family of parallel grid lines at integer offsets `±k*step` along `offsetDir`,
+ * anchored on origin (so the k=0 line always passes through the caltrop center).
+ * Grows outward in each direction and stops after MAX_MISS consecutive off-frustum
+ * lines so offset cameras still produce symmetric on-screen coverage up to `count`.
+ */
+function growGridLineFamily(positions, offsetDir, lineDir, step, count, camPos, camRight, camUp, halfW, halfH) {
+  if (count <= 0) return;
+  const MAX_MISS = 4;
+  const o = new THREE.Vector3();
+  for (const sign of [1, -1]) {
+    let hits = 0;
+    let misses = 0;
+    for (let k = 1; hits < count && misses < MAX_MISS; k++) {
+      o.copy(offsetDir).multiplyScalar(sign * k * step);
+      if (pushGridLineClipped(positions, o, lineDir, camPos, camRight, camUp, halfW, halfH)) {
+        hits++;
+        misses = 0;
+      } else {
+        misses++;
+      }
+      if (k > 100000) break;
+    }
+  }
+}
+
 /** Sync fillet circle color to the current background (solid color only). */
 function updateFilletColors() {
   const c = new THREE.Color(state.solidBackgroundColor);
@@ -333,19 +411,6 @@ function updateBitColorVisuals() {
 }
 
 const gridOffsetScratch = new THREE.Vector3();
-
-function pushGridLineWorld(flat, origin, axisWorld, extent) {
-  const o = origin;
-  const d = axisWorld;
-  flat.push(
-    o.x - d.x * extent,
-    o.y - d.y * extent,
-    o.z - d.z * extent,
-    o.x + d.x * extent,
-    o.y + d.y * extent,
-    o.z + d.z * extent
-  );
-}
 
 // Project each arm's 3D direction onto the camera plane, then orient
 // camera-facing rectangles along the resulting 2D directions.
@@ -764,7 +829,6 @@ function updateGridLines() {
 
   const halfW = (camera.right - camera.left) * 0.5;
   const halfH = (camera.top - camera.bottom) * 0.5;
-  const extent = Math.max(halfW, halfH) * 5;
 
   const sx = Math.max(0.001, state.gridSpacingX);
   const sy = Math.max(0.001, state.gridSpacingY);
@@ -775,37 +839,23 @@ function updateGridLines() {
 
   const positions = [];
   const o = gridOffsetScratch;
+  const camPos = camera.position;
 
   if (!state.showLaserGuides) {
-    const axLen = worldAxisHalfLength(wx, camRight, camUp, halfW, halfH);
-    const ayLen = worldAxisHalfLength(wy, camRight, camUp, halfW, halfH);
-    const azLen = worldAxisHalfLength(wz, camRight, camUp, halfW, halfH);
     o.set(0, 0, 0);
-    if (axLen > LASER_GUIDE_EPS) pushGridLineWorld(positions, o, wx, axLen);
-    if (ayLen > LASER_GUIDE_EPS) pushGridLineWorld(positions, o, wy, ayLen);
-    if (azLen > LASER_GUIDE_EPS) pushGridLineWorld(positions, o, wz, azLen);
+    pushGridLineClipped(positions, o, wx, camPos, camRight, camUp, halfW, halfH);
+    pushGridLineClipped(positions, o, wy, camPos, camRight, camUp, halfW, halfH);
+    pushGridLineClipped(positions, o, wz, camPos, camRight, camUp, halfW, halfH);
   }
 
   // One offset direction per family (two planes each drew a “first” line at the same spacing).
   // X-parallel: XY plane only (±Y). Y-parallel: XY only (±X). Z-parallel: XZ only (±X).
-  for (let j = 1; j <= nx; j++) {
-    o.copy(wy).multiplyScalar(j * sx);
-    pushGridLineWorld(positions, o, wx, extent);
-    o.negate();
-    pushGridLineWorld(positions, o, wx, extent);
-  }
-  for (let i = 1; i <= ny; i++) {
-    o.copy(wx).multiplyScalar(i * sy);
-    pushGridLineWorld(positions, o, wy, extent);
-    o.negate();
-    pushGridLineWorld(positions, o, wy, extent);
-  }
-  for (let i = 1; i <= nz; i++) {
-    o.copy(wx).multiplyScalar(i * sz);
-    pushGridLineWorld(positions, o, wz, extent);
-    o.negate();
-    pushGridLineWorld(positions, o, wz, extent);
-  }
+  // Grow outward from origin in each direction, counting only lines that actually clip into
+  // the frustum. Stops after a short miss streak so off-screen lines don't inflate the count,
+  // and so asymmetric camera positions still produce as many visible lines as requested.
+  growGridLineFamily(positions, wy, wx, sx, nx, camPos, camRight, camUp, halfW, halfH);
+  growGridLineFamily(positions, wx, wy, sy, ny, camPos, camRight, camUp, halfW, halfH);
+  growGridLineFamily(positions, wx, wz, sz, nz, camPos, camRight, camUp, halfW, halfH);
 
   if (positions.length === 0) {
     gridLineSegments.visible = false;
@@ -880,6 +930,17 @@ function animate() {
     controls.update();
   }
   renderer.render(scene, camera);
+  if (!window.__tracebitDebug) {
+    window.__tracebitDebug = {
+      get camera() { return camera; },
+      get controls() { return controls; },
+      get caltropGroup() { return caltropGroup; },
+      get scene() { return scene; },
+      get renderer() { return renderer; },
+      get state() { return state; },
+      get gridLineSegments() { return gridLineSegments; },
+    };
+  }
 }
 
 // --- UI / Seeds -------------------------------------------------------------
@@ -1799,6 +1860,86 @@ function initUI() {
     URL.revokeObjectURL(url);
   });
 
+  const downloadSvgPoseSetBtn = document.getElementById("downloadSvgPoseSet");
+  if (downloadSvgPoseSetBtn) {
+    downloadSvgPoseSetBtn.addEventListener("click", async () => {
+      if (!caltropGroup) return;
+
+      // Snapshot so we can restore when the batch finishes.
+      const savedEuler = caltropGroup.rotation.clone();
+      const savedAutoRotate = state.autoRotate;
+      state.autoRotate = false;
+      updateToggleButtons();
+
+      const baseX = DEFAULT_POSE_EULER_DEG.x;
+      const baseY = DEFAULT_POSE_EULER_DEG.y;
+      const baseZ = DEFAULT_POSE_EULER_DEG.z;
+
+      // 24 three-axis deltas built as 4 groups of 6. Each group walks i = 0..5 giving the
+      // X delta (i * 60°); Y and Z deltas are (i + offsetY) and (i + offsetZ) mod 6, with
+      // group-specific offsets that keep all 24 triples distinct. Because every within-group
+      // step increments each axis by 60°, and group boundaries also shift every axis, every
+      // transition changes all three angles.
+      const groupOffsets = [
+        { oy: 1, oz: 2 },
+        { oy: 2, oz: 4 },
+        { oy: 3, oz: 5 },
+        { oy: 4, oz: 1 },
+      ];
+      const jobs = [];
+      for (let g = 0; g < groupOffsets.length; g++) {
+        const { oy, oz } = groupOffsets[g];
+        for (let i = 0; i < 6; i++) {
+          jobs.push({
+            family: "xyz",
+            dx: i * 60,
+            dy: ((i + oy) % 6) * 60,
+            dz: ((i + oz) % 6) * 60,
+          });
+        }
+      }
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const pad = (n) => String(((n % 360) + 360) % 360).padStart(3, "0");
+      downloadSvgPoseSetBtn.disabled = true;
+      const originalLabel = downloadSvgPoseSetBtn.textContent;
+
+      try {
+        for (let i = 0; i < jobs.length; i++) {
+          const j = jobs[i];
+          downloadSvgPoseSetBtn.textContent = `Exporting ${i + 1} / ${jobs.length}…`;
+          caltropGroup.rotation.set(
+            (baseX + j.dx) * DEG2RAD,
+            (baseY + j.dy) * DEG2RAD,
+            (baseZ + j.dz) * DEG2RAD
+          );
+
+          const svg = buildCurrentSvg();
+          const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          const idx = String(i + 1).padStart(2, "0");
+          const suffix = `${idx}_dx${pad(j.dx)}_dy${pad(j.dy)}_dz${pad(j.dz)}`;
+          link.download = `tracebit-caltrop-pose-${suffix}-${stamp}.svg`;
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          // Give the browser time to start the download and release the object URL.
+          await new Promise((r) => setTimeout(r, 120));
+          URL.revokeObjectURL(url);
+        }
+      } finally {
+        caltropGroup.rotation.copy(savedEuler);
+        state.autoRotate = savedAutoRotate;
+        updateToggleButtons();
+        syncPoseSlidersFromRotation();
+        downloadSvgPoseSetBtn.disabled = false;
+        downloadSvgPoseSetBtn.textContent = originalLabel;
+      }
+    });
+  }
+
   function syncFullUI() {
     syncSliders();
     updateSeedDisplay();
@@ -2229,7 +2370,6 @@ function buildSvgGridLayer(half, pxPerUnit, camRight, camUp, rotMatrix) {
   if (!state.showGridLines) return "";
   const halfW = (camera.right - camera.left) * 0.5;
   const halfH = (camera.top - camera.bottom) * 0.5;
-  const extent = Math.max(halfW, halfH) * 5;
   const sx = Math.max(0.001, state.gridSpacingX);
   const sy = Math.max(0.001, state.gridSpacingY);
   const sz = Math.max(0.001, state.gridSpacingZ);
@@ -2243,6 +2383,7 @@ function buildSvgGridLayer(half, pxPerUnit, camRight, camUp, rotMatrix) {
   const o = new THREE.Vector3();
   const p0 = new THREE.Vector3();
   const p1 = new THREE.Vector3();
+  const camPos = camera.position;
   const gridStroke = Math.max(0.35, Math.max(state.laserGuideThickness, 0.001) * pxPerUnit * 0.45);
   const gridOpacity = state.laserGuideOpacity * 0.45;
   const stroke = state.bitColorHex;
@@ -2254,41 +2395,41 @@ function buildSvgGridLayer(half, pxPerUnit, camRight, camUp, rotMatrix) {
     out += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-opacity="${gridOpacity}" stroke-width="${gridStroke}" stroke-linecap="butt" />`;
   };
 
-  const seg = (origin, axis) => {
-    p0.copy(origin).addScaledVector(axis, -extent);
-    p1.copy(origin).addScaledVector(axis, extent);
+  const pushClipped = (origin, dir) => {
+    const range = clipLineToOrthoFrustum(origin, dir, camPos, camRight, camUp, halfW, halfH);
+    if (!range) return false;
+    const [t0, t1] = range;
+    p0.copy(origin).addScaledVector(dir, t0);
+    p1.copy(origin).addScaledVector(dir, t1);
     pushSeg(p0, p1);
+    return true;
+  };
+
+  const growFamily = (offsetDir, lineDir, step, count) => {
+    if (count <= 0) return;
+    const MAX_MISS = 4;
+    for (const sign of [1, -1]) {
+      let hits = 0;
+      let misses = 0;
+      for (let k = 1; hits < count && misses < MAX_MISS; k++) {
+        o.copy(offsetDir).multiplyScalar(sign * k * step);
+        if (pushClipped(o, lineDir)) { hits++; misses = 0; }
+        else misses++;
+        if (k > 100000) break;
+      }
+    }
   };
 
   if (!state.showLaserGuides) {
     o.set(0, 0, 0);
-    [wx, wy, wz].forEach((axis) => {
-      const t = worldAxisHalfLength(axis, camRight, camUp, halfW, halfH);
-      if (t <= LASER_GUIDE_EPS) return;
-      p0.copy(axis).multiplyScalar(-t);
-      p1.copy(axis).multiplyScalar(t);
-      pushSeg(p0, p1);
-    });
+    pushClipped(o, wx);
+    pushClipped(o, wy);
+    pushClipped(o, wz);
   }
 
-  for (let j = 1; j <= nx; j++) {
-    o.copy(wy).multiplyScalar(j * sx);
-    seg(o, wx);
-    o.negate();
-    seg(o, wx);
-  }
-  for (let i = 1; i <= ny; i++) {
-    o.copy(wx).multiplyScalar(i * sy);
-    seg(o, wy);
-    o.negate();
-    seg(o, wy);
-  }
-  for (let i = 1; i <= nz; i++) {
-    o.copy(wx).multiplyScalar(i * sz);
-    seg(o, wz);
-    o.negate();
-    seg(o, wz);
-  }
+  growFamily(wy, wx, sx, nx);
+  growFamily(wx, wy, sy, ny);
+  growFamily(wx, wz, sz, nz);
 
   return out;
 }
