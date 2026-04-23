@@ -54,6 +54,7 @@ const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.4, lenY: 1.0, lenZ: 1.4, len
 
 const DEFAULT_THICKNESS = 0.1;
 const DEFAULT_FILLET_RADIUS = 0.01;
+const DEFAULT_CALTROP_ZOOM = 1;
 const DEFAULT_CAMERA_POSITION = Object.freeze({ x: 1.1655, y: -0.1203, z: 6.8232 });
 /** Caltrop group rotation applied on load and by the Default shortcut / Pose Reset. */
 const DEFAULT_POSE_EULER_DEG = Object.freeze({ x: -40.5, y: 20, z: -84 });
@@ -90,6 +91,7 @@ const state = {
   fourthArmElevationDeg: DEFAULT_FOURTH_ARM_ELEVATION_DEG,
   thickness: DEFAULT_THICKNESS,
   filletRadius: DEFAULT_FILLET_RADIUS,
+  caltropZoom: DEFAULT_CALTROP_ZOOM,
   autoRotate: false,
   autoLength: false,
   /** Minimum angle (deg) between any axis-plane and the viewing direction during Auto Rotate.
@@ -427,15 +429,16 @@ function updateArmProjections() {
   const halfHeight = (camera.top - camera.bottom) * 0.5;
 
   getFourthArmLocalDir(fourthArmDirScratch);
+  const zoom = Math.max(0.001, state.caltropZoom);
   const arms = [
-    { mesh: armMeshX, guide: guideMeshX, dir: ARM_LOCAL_DIRS[0], len: state.lenX, draw: true },
-    { mesh: armMeshY, guide: guideMeshY, dir: ARM_LOCAL_DIRS[1], len: state.lenY, draw: true },
-    { mesh: armMeshZ, guide: guideMeshZ, dir: ARM_LOCAL_DIRS[2], len: state.lenZ, draw: true },
+    { mesh: armMeshX, guide: guideMeshX, dir: ARM_LOCAL_DIRS[0], len: state.lenX * zoom, draw: true },
+    { mesh: armMeshY, guide: guideMeshY, dir: ARM_LOCAL_DIRS[1], len: state.lenY * zoom, draw: true },
+    { mesh: armMeshZ, guide: guideMeshZ, dir: ARM_LOCAL_DIRS[2], len: state.lenZ * zoom, draw: true },
     {
       mesh: armMeshDiag,
       guide: guideMeshDiag,
       dir: fourthArmDirScratch,
-      len: state.lenDiag,
+      len: state.lenDiag * zoom,
       draw: state.showFourthArm,
     },
   ];
@@ -461,7 +464,7 @@ function updateArmProjections() {
     mesh.quaternion.copy(camera.quaternion);
     mesh.rotateZ(angle);
 
-    mesh.scale.set(projectedLen, state.thickness, 1);
+    mesh.scale.set(projectedLen, state.thickness * zoom, 1);
     mesh.position.set(0, 0, 0);
 
     if (guide) {
@@ -497,8 +500,9 @@ function updateFilletCircles(arms) {
   const ctx = filletOverlayCtx;
   ctx.clearRect(0, 0, canvasW, canvasH);
 
-  const hw = state.thickness / 2;
-  const r = state.filletRadius;
+  const zoom = Math.max(0.001, state.caltropZoom);
+  const hw = (state.thickness * zoom) / 2;
+  const r = state.filletRadius * zoom;
 
   const frustumW = camera.right - camera.left;
   const scale = canvasW / frustumW;
@@ -1070,6 +1074,7 @@ function initUI() {
   const fourthArmElevationInput = document.getElementById("fourthArmElevation");
   const thicknessInput = document.getElementById("thickness");
   const filletRadiusInput = document.getElementById("filletRadius");
+  const caltropZoomInput = document.getElementById("caltropZoom");
   const laserGuideThicknessInput = document.getElementById("laserGuideThickness");
   const laserGuideOpacityInput = document.getElementById("laserGuideOpacity");
   const lenXValue = document.getElementById("lenX-value");
@@ -1080,6 +1085,7 @@ function initUI() {
   const fourthArmElevationValue = document.getElementById("fourthArmElevation-value");
   const thicknessValue = document.getElementById("thickness-value");
   const filletRadiusValue = document.getElementById("filletRadius-value");
+  const caltropZoomValue = document.getElementById("caltropZoom-value");
   const laserGuideThicknessValue = document.getElementById("laserGuideThickness-value");
   const laserGuideOpacityValue = document.getElementById("laserGuideOpacity-value");
   const planeAngleLimitInput = document.getElementById("planeAngleLimit");
@@ -1181,10 +1187,10 @@ function initUI() {
 
   state._ui = {
     lenXInput, lenYInput, lenZInput, lenDiagInput, fourthArmAzimuthInput, fourthArmElevationInput,
-    thicknessInput, filletRadiusInput,
+    thicknessInput, filletRadiusInput, caltropZoomInput,
     laserGuideThicknessInput, laserGuideOpacityInput,
     lenXValue, lenYValue, lenZValue, lenDiagValue, fourthArmAzimuthValue, fourthArmElevationValue,
-    thicknessValue, filletRadiusValue,
+    thicknessValue, filletRadiusValue, caltropZoomValue,
     laserGuideThicknessValue, laserGuideOpacityValue,
     fourthArmToggle,
     gradientRadialRadiusInput,
@@ -1222,6 +1228,7 @@ function initUI() {
     if (fourthArmElevationValue) fourthArmElevationValue.value = state.fourthArmElevationDeg.toFixed(1);
     thicknessValue.value = state.thickness.toFixed(3);
     filletRadiusValue.value = state.filletRadius.toFixed(3);
+    if (caltropZoomValue) caltropZoomValue.value = state.caltropZoom.toFixed(2);
     if (planeAngleLimitValue) planeAngleLimitValue.value = state.planeAngleLimitDeg.toFixed(0);
     laserGuideThicknessValue.value = state.laserGuideThickness.toFixed(3);
     laserGuideOpacityValue.value = state.laserGuideOpacity.toFixed(2);
@@ -1252,6 +1259,7 @@ function initUI() {
     if (fourthArmElevationInput) fourthArmElevationInput.value = state.fourthArmElevationDeg.toString();
     thicknessInput.value = state.thickness.toString();
     filletRadiusInput.value = state.filletRadius.toString();
+    if (caltropZoomInput) caltropZoomInput.value = state.caltropZoom.toString();
     if (planeAngleLimitInput) planeAngleLimitInput.value = state.planeAngleLimitDeg.toString();
     laserGuideThicknessInput.value = state.laserGuideThickness.toString();
     laserGuideOpacityInput.value = state.laserGuideOpacity.toString();
@@ -1322,6 +1330,7 @@ function initUI() {
   }
   mirrorRangeToValueField(thicknessValue, thicknessInput, false);
   mirrorRangeToValueField(filletRadiusValue, filletRadiusInput, false);
+  if (caltropZoomValue && caltropZoomInput) mirrorRangeToValueField(caltropZoomValue, caltropZoomInput, false);
   if (planeAngleLimitValue && planeAngleLimitInput) mirrorRangeToValueField(planeAngleLimitValue, planeAngleLimitInput, false);
   mirrorRangeToValueField(laserGuideThicknessValue, laserGuideThicknessInput, false);
   mirrorRangeToValueField(laserGuideOpacityValue, laserGuideOpacityInput, false);
@@ -1642,6 +1651,13 @@ function initUI() {
     updateLengthDisplays();
   });
 
+  if (caltropZoomInput) {
+    caltropZoomInput.addEventListener("input", () => {
+      state.caltropZoom = parseFloat(caltropZoomInput.value);
+      updateLengthDisplays();
+    });
+  }
+
   if (planeAngleLimitInput) {
     planeAngleLimitInput.addEventListener("input", () => {
       state.planeAngleLimitDeg = parseFloat(planeAngleLimitInput.value);
@@ -1672,6 +1688,9 @@ function initUI() {
   }
   wireNumericValueField(thicknessValue, thicknessInput, "thickness", false);
   wireNumericValueField(filletRadiusValue, filletRadiusInput, "filletRadius", false);
+  if (caltropZoomValue && caltropZoomInput) {
+    wireNumericValueField(caltropZoomValue, caltropZoomInput, "caltropZoom", false);
+  }
   if (planeAngleLimitValue && planeAngleLimitInput) {
     wireNumericValueField(planeAngleLimitValue, planeAngleLimitInput, "planeAngleLimitDeg", false);
   }
@@ -2074,6 +2093,7 @@ function applyShortcutDefault() {
   state.showGridLines = false;
   state.thickness = DEFAULT_THICKNESS;
   state.filletRadius = DEFAULT_FILLET_RADIUS;
+  state.caltropZoom = DEFAULT_CALTROP_ZOOM;
   state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
   state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
   state.lenX = DEFAULT_ARM_LENGTHS.lenX;
@@ -2120,6 +2140,7 @@ function applyShortcutAuto() {
   state.showGridLines = false;
   state.thickness = DEFAULT_THICKNESS;
   state.filletRadius = DEFAULT_FILLET_RADIUS;
+  state.caltropZoom = DEFAULT_CALTROP_ZOOM;
   state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
   state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
   state.showFourthArm = false;
@@ -2139,6 +2160,7 @@ function applyShortcutVibes() {
   state.fourthArmElevationDeg = 35.5;
   state.thickness = 0.1;
   state.filletRadius = 0.025;
+  state.caltropZoom = DEFAULT_CALTROP_ZOOM;
   state.autoRotate = true;
   state.autoLength = true;
   state.planeAngleLimitDeg = 8;
@@ -2452,16 +2474,17 @@ function buildCurrentSvg() {
   const bgLayer = buildSvgBackgroundLayer(size, half, camRight, camUp, rotMatrix);
   const gridLayer = buildSvgGridLayer(half, pxPerUnit, camRight, camUp, rotMatrix);
 
+  const zoom = Math.max(0.001, state.caltropZoom);
   const armData = [
-    { dir: ARM_LOCAL_DIRS[0], len: state.lenX },
-    { dir: ARM_LOCAL_DIRS[1], len: state.lenY },
-    { dir: ARM_LOCAL_DIRS[2], len: state.lenZ },
+    { dir: ARM_LOCAL_DIRS[0], len: state.lenX * zoom },
+    { dir: ARM_LOCAL_DIRS[1], len: state.lenY * zoom },
+    { dir: ARM_LOCAL_DIRS[2], len: state.lenZ * zoom },
   ];
   if (state.showFourthArm) {
-    armData.push({ dir: getFourthArmLocalDir(fourthArmDirScratch), len: state.lenDiag });
+    armData.push({ dir: getFourthArmLocalDir(fourthArmDirScratch), len: state.lenDiag * zoom });
   }
 
-  const thicknessPx = state.thickness * pxPerUnit;
+  const thicknessPx = state.thickness * zoom * pxPerUnit;
   const halfWidth = half;
   const halfHeight = half;
   const bitFill = state.bitColorHex;
@@ -2504,8 +2527,8 @@ function buildCurrentSvg() {
   // Inner fillets: additive arc patches at concave corners (mirrors updateFilletCircles).
   // Computed in world Y-up; flipped to SVG Y-down at emit time.
   let filletSvg = "";
-  const hw = state.thickness / 2;
-  const r = state.filletRadius;
+  const hw = (state.thickness * zoom) / 2;
+  const r = state.filletRadius * zoom;
   if (r > 0.0005) {
     const halves = [];
     for (const arm of projectedArms) {
