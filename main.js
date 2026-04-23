@@ -55,6 +55,7 @@ const DEFAULT_ARM_LENGTHS = Object.freeze({ lenX: 1.4, lenY: 1.0, lenZ: 1.4, len
 const DEFAULT_THICKNESS = 0.1;
 const DEFAULT_FILLET_RADIUS = 0.01;
 const DEFAULT_CALTROP_ZOOM = 1;
+const DEFAULT_AUTO_ROTATE_SPEED = 1;
 const DEFAULT_CAMERA_POSITION = Object.freeze({ x: 1.1655, y: -0.1203, z: 6.8232 });
 /** Caltrop group rotation applied on load and by the Default shortcut / Pose Reset. */
 const DEFAULT_POSE_EULER_DEG = Object.freeze({ x: -40.5, y: 20, z: -84 });
@@ -93,11 +94,12 @@ const state = {
   filletRadius: DEFAULT_FILLET_RADIUS,
   caltropZoom: DEFAULT_CALTROP_ZOOM,
   autoRotate: false,
+  autoRotateSpeed: DEFAULT_AUTO_ROTATE_SPEED,
   autoLength: false,
   /** Minimum angle (deg) between any axis-plane and the viewing direction during Auto Rotate.
    *  Higher values keep planes from going edge-on (less overlap of axis lines in the view).
    *  ~35° = isometric pose / pure spin around the view axis. */
-  planeAngleLimitDeg: 45,
+  planeAngleLimitDeg: 0,
   showLaserGuides: false,
   laserGuideThickness: LASER_GUIDE_DEFAULT_THICKNESS,
   laserGuideOpacity: LASER_GUIDE_DEFAULT_OPACITY,
@@ -872,29 +874,36 @@ function updateGridLines() {
   gridLineSegments.visible = true;
 }
 
+let autoRotatePhase = 0;
+let autoRotateLastTime = 0;
+const AUTO_ROTATE_X_AXIS = new THREE.Vector3(1, 0, 0);
+const AUTO_ROTATE_Y_AXIS = new THREE.Vector3(0, 1, 0);
+const AUTO_ROTATE_Z_AXIS = new THREE.Vector3(0, 0, 1);
+
 function animate() {
   requestAnimationFrame(animate);
 
+  const nowMs = performance.now();
   if (state.autoRotate) {
-    const t = performance.now() * 0.0003;
-    // Compose rotation as: spin around the view axis + bounded tilt perpendicular to it.
-    // Spin-around-V preserves each axis's angle with V, so no plane can go edge-on.
-    // Tilt adds motion away from isometric; magnitude is capped by planeAngleLimitDeg.
-    const baselineDeg = 35.264; // all-axes plane angle at isometric pose
-    const limit = Math.max(0, state.planeAngleLimitDeg || 0);
-    const maxTiltDeg = Math.max(0, baselineDeg - limit);
-    const maxTiltRad = THREE.MathUtils.degToRad(maxTiltDeg);
-    const viewDir = new THREE.Vector3();
-    camera.getWorldDirection(viewDir);
-    const camRight = new THREE.Vector3();
-    camera.matrixWorld.extractBasis(camRight, new THREE.Vector3(), new THREE.Vector3());
-    const qSpin = new THREE.Quaternion().setFromAxisAngle(viewDir, t);
-    const qTilt = new THREE.Quaternion().setFromAxisAngle(
-      camRight,
-      Math.sin(t * 0.67) * maxTiltRad
-    );
-    caltropGroup.quaternion.copy(qTilt).multiply(qSpin);
+    const speed = Math.max(0, state.autoRotateSpeed);
+    const dt = autoRotateLastTime ? nowMs - autoRotateLastTime : 0;
+    autoRotatePhase += dt * 0.0003 * speed;
+    autoRotateLastTime = nowMs;
+    const t = autoRotatePhase;
+    // Continuous rotation around all three world axes at coprime-ish rates so the
+    // motion doesn't repeat. Plane Angle Min dampens the X/Y (tilt) axes toward zero
+    // as it approaches 35° (the baseline) — at max limit the motion reduces to a
+    // pure Z-spin, giving the old spin-around-view-axis feel.
+    const baselineDeg = 35.264;
+    const limit = Math.max(0, Math.min(baselineDeg, state.planeAngleLimitDeg || 0));
+    const tiltScale = 1 - limit / baselineDeg;
+    const qX = new THREE.Quaternion().setFromAxisAngle(AUTO_ROTATE_X_AXIS, t * 0.618 * tiltScale);
+    const qY = new THREE.Quaternion().setFromAxisAngle(AUTO_ROTATE_Y_AXIS, t * 0.382 * tiltScale);
+    const qZ = new THREE.Quaternion().setFromAxisAngle(AUTO_ROTATE_Z_AXIS, t);
+    caltropGroup.quaternion.copy(qZ).multiply(qY).multiply(qX);
     if (state._ui) syncPoseSlidersFromRotation();
+  } else {
+    autoRotateLastTime = 0;
   }
 
   if (state.autoLength) {
@@ -1090,6 +1099,8 @@ function initUI() {
   const laserGuideOpacityValue = document.getElementById("laserGuideOpacity-value");
   const planeAngleLimitInput = document.getElementById("planeAngleLimit");
   const planeAngleLimitValue = document.getElementById("planeAngleLimit-value");
+  const autoRotateSpeedInput = document.getElementById("autoRotateSpeed");
+  const autoRotateSpeedValue = document.getElementById("autoRotateSpeed-value");
 
   const autoRotateToggle = document.getElementById("autoRotateToggle");
   const autoLengthToggle = document.getElementById("autoLengthToggle");
@@ -1230,6 +1241,7 @@ function initUI() {
     filletRadiusValue.value = state.filletRadius.toFixed(3);
     if (caltropZoomValue) caltropZoomValue.value = state.caltropZoom.toFixed(2);
     if (planeAngleLimitValue) planeAngleLimitValue.value = state.planeAngleLimitDeg.toFixed(0);
+    if (autoRotateSpeedValue) autoRotateSpeedValue.value = state.autoRotateSpeed.toFixed(2);
     laserGuideThicknessValue.value = state.laserGuideThickness.toFixed(3);
     laserGuideOpacityValue.value = state.laserGuideOpacity.toFixed(2);
     if (gradientRadialRadiusValue) gradientRadialRadiusValue.value = state.gradientRadialRadius.toFixed(2);
@@ -1261,6 +1273,7 @@ function initUI() {
     filletRadiusInput.value = state.filletRadius.toString();
     if (caltropZoomInput) caltropZoomInput.value = state.caltropZoom.toString();
     if (planeAngleLimitInput) planeAngleLimitInput.value = state.planeAngleLimitDeg.toString();
+    if (autoRotateSpeedInput) autoRotateSpeedInput.value = state.autoRotateSpeed.toString();
     laserGuideThicknessInput.value = state.laserGuideThickness.toString();
     laserGuideOpacityInput.value = state.laserGuideOpacity.toString();
     if (gradientRadialRadiusInput) gradientRadialRadiusInput.value = state.gradientRadialRadius.toString();
@@ -1332,6 +1345,7 @@ function initUI() {
   mirrorRangeToValueField(filletRadiusValue, filletRadiusInput, false);
   if (caltropZoomValue && caltropZoomInput) mirrorRangeToValueField(caltropZoomValue, caltropZoomInput, false);
   if (planeAngleLimitValue && planeAngleLimitInput) mirrorRangeToValueField(planeAngleLimitValue, planeAngleLimitInput, false);
+  if (autoRotateSpeedValue && autoRotateSpeedInput) mirrorRangeToValueField(autoRotateSpeedValue, autoRotateSpeedInput, false);
   mirrorRangeToValueField(laserGuideThicknessValue, laserGuideThicknessInput, false);
   mirrorRangeToValueField(laserGuideOpacityValue, laserGuideOpacityInput, false);
   if (gradientRadialRadiusValue && gradientRadialRadiusInput) {
@@ -1665,6 +1679,13 @@ function initUI() {
     });
   }
 
+  if (autoRotateSpeedInput) {
+    autoRotateSpeedInput.addEventListener("input", () => {
+      state.autoRotateSpeed = parseFloat(autoRotateSpeedInput.value);
+      updateLengthDisplays();
+    });
+  }
+
   laserGuideThicknessInput.addEventListener("input", () => {
     state.laserGuideThickness = parseFloat(laserGuideThicknessInput.value);
     updateLengthDisplays();
@@ -1693,6 +1714,9 @@ function initUI() {
   }
   if (planeAngleLimitValue && planeAngleLimitInput) {
     wireNumericValueField(planeAngleLimitValue, planeAngleLimitInput, "planeAngleLimitDeg", false);
+  }
+  if (autoRotateSpeedValue && autoRotateSpeedInput) {
+    wireNumericValueField(autoRotateSpeedValue, autoRotateSpeedInput, "autoRotateSpeed", false);
   }
   wireNumericValueField(laserGuideThicknessValue, laserGuideThicknessInput, "laserGuideThickness", false);
   wireNumericValueField(laserGuideOpacityValue, laserGuideOpacityInput, "laserGuideOpacity", false);
@@ -2094,6 +2118,7 @@ function applyShortcutDefault() {
   state.thickness = DEFAULT_THICKNESS;
   state.filletRadius = DEFAULT_FILLET_RADIUS;
   state.caltropZoom = DEFAULT_CALTROP_ZOOM;
+  state.autoRotateSpeed = DEFAULT_AUTO_ROTATE_SPEED;
   state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
   state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
   state.lenX = DEFAULT_ARM_LENGTHS.lenX;
@@ -2141,6 +2166,7 @@ function applyShortcutAuto() {
   state.thickness = DEFAULT_THICKNESS;
   state.filletRadius = DEFAULT_FILLET_RADIUS;
   state.caltropZoom = DEFAULT_CALTROP_ZOOM;
+  state.autoRotateSpeed = DEFAULT_AUTO_ROTATE_SPEED;
   state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
   state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
   state.showFourthArm = false;
@@ -2161,6 +2187,7 @@ function applyShortcutVibes() {
   state.thickness = 0.1;
   state.filletRadius = 0.025;
   state.caltropZoom = DEFAULT_CALTROP_ZOOM;
+  state.autoRotateSpeed = DEFAULT_AUTO_ROTATE_SPEED;
   state.autoRotate = true;
   state.autoLength = true;
   state.planeAngleLimitDeg = 8;

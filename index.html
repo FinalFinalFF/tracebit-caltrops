@@ -420,11 +420,18 @@
           </div>
           <div class="control-group">
             <div class="control-label-row">
+              <span>Auto Rotate Speed</span>
+              <input type="number" class="value value-num" id="autoRotateSpeed-value" inputmode="decimal" />
+            </div>
+            <input id="autoRotateSpeed" type="range" min="0" max="5" step="0.05" value="1" />
+          </div>
+          <div class="control-group">
+            <div class="control-label-row">
               <span>Plane Angle Min (°)</span>
               <input type="number" class="value value-num" id="planeAngleLimit-value" inputmode="decimal" />
             </div>
-            <input id="planeAngleLimit" type="range" min="0" max="45" step="1" value="45" />
-            <p class="hint hint-after-control">Prevents axis-planes from going edge-on during Auto Rotate. ~35° = pure spin around the view axis; lower values allow more tilt.</p>
+            <input id="planeAngleLimit" type="range" min="0" max="45" step="1" value="0" />
+            <p class="hint hint-after-control">Dampens the X/Y tumble during Auto Rotate. 0° = full 3-axis tumble; ~35° = pure Z-spin.</p>
           </div>
           <div class="control-group">
             <div class="control-label-row">
