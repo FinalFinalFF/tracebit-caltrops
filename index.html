@@ -43,22 +43,32 @@
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.12em;
-      color: #bbb;
+      color: #888;
       cursor: pointer;
       list-style: none;
       display: flex;
       align-items: center;
       justify-content: space-between;
       user-select: none;
-      padding: 8px 0 6px;
+      padding: 8px 10px 6px;
+      margin: 0 -10px;
+      border-left: 2px solid transparent;
+      transition: color 0.12s ease, background-color 0.12s ease, border-color 0.12s ease;
+    }
+    details.panel-section > summary:hover { color: #ccc; }
+    details.panel-section[open] > summary {
+      color: #fff;
+      background: #0c0c0c;
+      border-left-color: #EA6F53;
     }
     details.panel-section > summary::-webkit-details-marker { display: none; }
     details.panel-section > summary::after {
       content: "▾";
       font-size: 10px;
-      opacity: 0.65;
-      transition: transform 0.12s ease;
+      opacity: 0.55;
+      transition: transform 0.12s ease, opacity 0.12s ease;
     }
+    details.panel-section[open] > summary::after { opacity: 0.9; }
     details.panel-section:not([open]) > summary::after {
       transform: rotate(-90deg);
     }
