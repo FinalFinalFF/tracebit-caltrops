@@ -2811,6 +2811,7 @@ function initUI() {
   wireShortcut("shortcutMarkPaper", applyShortcutMarkPaper);
   wireShortcut("shortcutHeroInk", applyShortcutHeroInk);
   wireShortcut("shortcutHeroPaper", applyShortcutHeroPaper);
+  wireShortcut("shortcutHeroFull", applyShortcutHeroFull);
   wireShortcut("shortcutMotion", applyShortcutMotion);
 
   document.getElementById("shortcutDefault").addEventListener("click", () => {
@@ -3011,6 +3012,31 @@ function applyShortcutHeroPaper() {
   state.bitGradientLinearSpan = 0.35;
   state.bitGradientLasersInherit = true;
   applyGradientPreset("bit", BRAND_GRADIENT_SPECTRUM);
+}
+
+/**
+ * Full hero lockup: Tracebit Spectrum gradient on ink with motion. The
+ * "everything on" brand preset — gradient bit, animated rotation + length,
+ * laser guides inheriting the gradient, modest plane-angle limit to keep
+ * the tumble graceful.
+ */
+function applyShortcutHeroFull() {
+  applyBrandBaseline();
+  state.solidBackgroundColor = BRAND_INK;
+  state.bitMode = "gradient";
+  state.bitGradientType = "linear";
+  state.bitGradientAlignMode = "screen";
+  state.bitGradientScreenAngleDeg = 135;
+  state.bitGradientLinearSpan = 0.35;
+  state.bitGradientLasersInherit = true;
+  applyGradientPreset("bit", BRAND_GRADIENT_SPECTRUM);
+  state.autoRotate = true;
+  state.autoRotateSpeed = 0.65;
+  state.autoLength = true;
+  state.planeAngleLimitDeg = 12;
+  state.showLaserGuides = true;
+  state.laserGuideThickness = 0.003;
+  state.laserGuideOpacity = 0.9;
 }
 
 /** Animated brand lockup: coral on ink with Auto Rotate + Auto Length. */
