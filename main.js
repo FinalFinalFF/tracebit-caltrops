@@ -73,20 +73,50 @@ const DEFAULT_BIT_GRADIENT_COLORS = Object.freeze(["#c91f5e", "#ff8a3c", "#f5e6e
 /** Reused canvas-space direction when the projected arm is edge-on (arm-align mode only). */
 let lastBitGradientCanvasDir = { dx: 1, dy: 0 };
 
-/** Quick-pick swatches for all color controls (hex field + native picker). */
+// === Brand identity (from resources/) ======================================
+
+/** Ink — primary dark background. */
+const BRAND_INK = "#231F20";
+/** Paper — primary light background. */
+const BRAND_PAPER = "#F3EFEC";
+/** Coral — signature brand color (used on the mark itself). */
+const BRAND_CORAL = "#EA6F53";
+
+/** Quick-pick swatches: brand primary + secondary palette only. */
 const PALETTE_PRESET_HEX = Object.freeze([
-  "#EBEBEB",
-  "#BA95BD",
-  "#8A3C90",
-  "#BD3B43",
-  "#8a9a8e",
-  "#f5e6e8",
-  "#c45c3e",
-  "#436083",
-  "#BFBDBB",
-  "#FFB2B5",
-  "#FFEDC0",
+  BRAND_INK,
+  BRAND_PAPER,
+  BRAND_CORAL,
+  "#BD3B43", // brand red
+  "#8A3C90", // magenta-purple
+  "#BA95BD", // lavender
+  "#E1C5CE", // pale pink
+  "#436083", // slate blue
+  "#2D4A53", // deep teal
+  "#BFBDBB", // warm gray
 ]);
+
+/**
+ * Canonical brand gradients (from resources/gradients.svg).
+ * Each entry has `colors[]` and `offsets[]` arrays of equal length.
+ * Designed to be applied via `applyGradientPreset(...)`.
+ */
+const BRAND_GRADIENT_SPECTRUM = Object.freeze({
+  colors: ["#B3C0B6", "#BFBDBA", "#E6C4CE", "#DC8666", "#CD2B3E", "#953294", "#5B2EB1", "#02185D"],
+  offsets: [0, 0.0989583, 0.25, 0.375, 0.557292, 0.703125, 0.854167, 1],
+});
+const BRAND_GRADIENT_SPECTRUM_REORDER = Object.freeze({
+  colors: ["#B3C0B6", "#BFBDBA", "#E6C4CE", "#DC8666", "#953294", "#CD2B3E", "#5B2EB1", "#02185D"],
+  offsets: [0, 0.0989583, 0.25, 0.375, 0.654424, 0.711746, 0.854167, 1],
+});
+const BRAND_GRADIENT_WARM = Object.freeze({
+  colors: ["#A9919F", "#B0979B", "#B89D9A", "#C5A595", "#DDB78D"],
+  offsets: [0, 0.0989583, 0.25, 0.471154, 1],
+});
+const BRAND_GRADIENT_COOL = Object.freeze({
+  colors: ["#4F6A89", "#5C748F", "#A4B1B6", "#CBC2B0", "#DBC6A7"],
+  offsets: [0.105228, 0.293269, 0.442708, 0.625, 1],
+});
 
 const state = {
   lenX: DEFAULT_ARM_LENGTHS.lenX,
@@ -132,10 +162,14 @@ const state = {
   gradientRadial2OffsetX: 0.2,
   gradientRadial2OffsetY: -0.15,
   gradientRadial2ColorCount: 2,
-  gradientRadial2Colors: [...DEFAULT_GRADIENT2_COLORS],
+  gradientRadial2Colors: [...DEFAULT_GRADIENT2_COLORS, "#000000", "#000000", "#000000", "#000000"],
+  /** Optional per-stop offsets [0..1] (length must match gradientRadial2ColorCount). null = even spacing. */
+  gradientRadial2StopOffsets: null,
   gradientAlignAxis: 0,
   gradientColorCount: 3,
-  gradientColors: [...DEFAULT_GRADIENT_COLORS],
+  gradientColors: [...DEFAULT_GRADIENT_COLORS, "#000000", "#000000", "#000000", "#000000"],
+  /** Optional per-stop offsets for the (linear or radial) background gradient. */
+  gradientStopOffsets: null,
   bitColorHex: "#ffffff",
   /** "solid" | "gradient" — gradient fills the caltrop silhouette (arms + fillets). */
   bitMode: "solid",
@@ -148,7 +182,9 @@ const state = {
   /** When alignMode === "arm": which arm projection to follow (0 X, 1 Y, 2 Z, 3 fourth). */
   bitGradientArmAxis: 0,
   bitGradientColorCount: 3,
-  bitGradientColors: [...DEFAULT_BIT_GRADIENT_COLORS],
+  bitGradientColors: [...DEFAULT_BIT_GRADIENT_COLORS, "#000000", "#000000", "#000000", "#000000"],
+  /** Optional per-stop offsets for the bit gradient (linear or radial). */
+  bitGradientStopOffsets: null,
   /** Linear gradient span as a fraction of the canvas diagonal (0.02–2). Tighter values
    *  compress the gradient toward the canvas center so the full stop range fits inside the bit. */
   bitGradientLinearSpan: 0.3,
@@ -550,8 +586,9 @@ function buildBitCanvasFillStyle(ctx, canvasW, canvasH) {
       const rgb = hexColorToRgb(state.bitGradientColors[0]);
       g.addColorStop(1, rgb ? `rgba(${rgb.r},${rgb.g},${rgb.b},0)` : "rgba(0,0,0,0)");
     } else {
+      const offs = effectiveStopOffsets(state.bitGradientStopOffsets, n);
       for (let i = 0; i < n; i++) {
-        g.addColorStop(i / (n - 1), state.bitGradientColors[i]);
+        g.addColorStop(offs[i], state.bitGradientColors[i]);
       }
     }
     return { fill: g, stroke: g };
@@ -591,8 +628,9 @@ function buildBitCanvasFillStyle(ctx, canvasW, canvasH) {
     g.addColorStop(0, state.bitGradientColors[0]);
     g.addColorStop(1, state.bitGradientColors[0]);
   } else {
+    const offs = effectiveStopOffsets(state.bitGradientStopOffsets, n);
     for (let i = 0; i < n; i++) {
-      g.addColorStop(i / (n - 1), state.bitGradientColors[i]);
+      g.addColorStop(offs[i], state.bitGradientColors[i]);
     }
   }
   return { fill: g, stroke: g };
@@ -790,8 +828,25 @@ function resizeBackgroundCanvas() {
   }
 }
 
+/** Max number of stops a gradient may have (bit, background, radial2). */
+const GRADIENT_MAX_STOPS = 8;
+
 function clampGradientColorCount(raw) {
-  return Math.max(1, Math.min(4, raw | 0));
+  return Math.max(1, Math.min(GRADIENT_MAX_STOPS, raw | 0));
+}
+
+/**
+ * Build effective per-stop offsets for a gradient. If `offsetsArr` exists and matches `n`,
+ * use it; otherwise distribute evenly across [0, 1]. n === 1 returns [0].
+ */
+function effectiveStopOffsets(offsetsArr, n) {
+  if (Array.isArray(offsetsArr) && offsetsArr.length >= n) {
+    return offsetsArr.slice(0, n).map((v) => Math.max(0, Math.min(1, +v)));
+  }
+  if (n === 1) return [0];
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = i / (n - 1);
+  return out;
 }
 
 /** Parse #rgb / #rrggbb for gradient stops (avoids dark halos when fading to transparent). */
@@ -815,7 +870,7 @@ function hexColorToRgb(hex) {
  * @param {string} outerOneColorStop - outer stop when n === 1 (opaque fade target)
  * @param {{ oneColorTransparentOuter?: boolean }} [opts] - if true and n===1, outer stop is same hue at alpha 0 (clean blend over layers below)
  */
-function fillCanvasRadialGradientLayer(ctx, w, h, outerOneColorStop, radiusFrac, widthMul, heightMul, ox, oy, colors, n, opts) {
+function fillCanvasRadialGradientLayer(ctx, w, h, outerOneColorStop, radiusFrac, widthMul, heightMul, ox, oy, colors, n, opts, offsetsArr) {
   const halfDiag = Math.hypot(w, h) * 0.5;
   const base = Math.max(8, halfDiag * Math.max(0.02, Math.min(3, radiusFrac)));
   const rx = base * Math.max(0.05, Math.min(8, widthMul));
@@ -835,8 +890,9 @@ function fillCanvasRadialGradientLayer(ctx, w, h, outerOneColorStop, radiusFrac,
       gRadial.addColorStop(1, outerOneColorStop);
     }
   } else {
+    const offs = effectiveStopOffsets(offsetsArr, n);
     for (let i = 0; i < n; i++) {
-      gRadial.addColorStop(i / (n - 1), colors[i]);
+      gRadial.addColorStop(offs[i], colors[i]);
     }
   }
 
@@ -900,7 +956,9 @@ function updateBackground() {
       state.gradientRadialOffsetX,
       state.gradientRadialOffsetY,
       state.gradientColors,
-      n
+      n,
+      undefined,
+      state.gradientStopOffsets
     );
 
     if (state.gradientRadial2Enabled) {
@@ -917,7 +975,8 @@ function updateBackground() {
         state.gradientRadial2OffsetY,
         state.gradientRadial2Colors,
         n2,
-        { oneColorTransparentOuter: n2 === 1 }
+        { oneColorTransparentOuter: n2 === 1 },
+        state.gradientRadial2StopOffsets
       );
     }
   } else if (n === 1) {
@@ -944,8 +1003,9 @@ function updateBackground() {
     const x1 = cx + dx * L;
     const y1 = cy + dyC * L;
     g = ctx.createLinearGradient(x0, y0, x1, y1);
+    const offs = effectiveStopOffsets(state.gradientStopOffsets, n);
     for (let i = 0; i < n; i++) {
-      g.addColorStop(i / (n - 1), state.gradientColors[i]);
+      g.addColorStop(offs[i], state.gradientColors[i]);
     }
   }
 
@@ -1282,10 +1342,21 @@ function initUI() {
     document.getElementById("bitGradientColor1"),
     document.getElementById("bitGradientColor2"),
     document.getElementById("bitGradientColor3"),
+    document.getElementById("bitGradientColor4"),
+    document.getElementById("bitGradientColor5"),
+    document.getElementById("bitGradientColor6"),
+    document.getElementById("bitGradientColor7"),
   ];
-  const bitGradientColor1Wrap = document.getElementById("bitGradientColor1-wrap");
-  const bitGradientColor2Wrap = document.getElementById("bitGradientColor2-wrap");
-  const bitGradientColor3Wrap = document.getElementById("bitGradientColor3-wrap");
+  const bitGradientColorWraps = [
+    null,
+    document.getElementById("bitGradientColor1-wrap"),
+    document.getElementById("bitGradientColor2-wrap"),
+    document.getElementById("bitGradientColor3-wrap"),
+    document.getElementById("bitGradientColor4-wrap"),
+    document.getElementById("bitGradientColor5-wrap"),
+    document.getElementById("bitGradientColor6-wrap"),
+    document.getElementById("bitGradientColor7-wrap"),
+  ];
   const bitGradientRadialRadiusInput = document.getElementById("bitGradientRadialRadius");
   const bitGradientRadialRadiusValue = document.getElementById("bitGradientRadialRadius-value");
   const bitGradientRadialWidthInput = document.getElementById("bitGradientRadialWidth");
@@ -1320,10 +1391,21 @@ function initUI() {
     document.getElementById("gradientColor1"),
     document.getElementById("gradientColor2"),
     document.getElementById("gradientColor3"),
+    document.getElementById("gradientColor4"),
+    document.getElementById("gradientColor5"),
+    document.getElementById("gradientColor6"),
+    document.getElementById("gradientColor7"),
   ];
-  const gradientColor1Wrap = document.getElementById("gradientColor1-wrap");
-  const gradientColor2Wrap = document.getElementById("gradientColor2-wrap");
-  const gradientColor3Wrap = document.getElementById("gradientColor3-wrap");
+  const gradientColorWraps = [
+    null, // Color 1 has no wrap (always visible)
+    document.getElementById("gradientColor1-wrap"),
+    document.getElementById("gradientColor2-wrap"),
+    document.getElementById("gradientColor3-wrap"),
+    document.getElementById("gradientColor4-wrap"),
+    document.getElementById("gradientColor5-wrap"),
+    document.getElementById("gradientColor6-wrap"),
+    document.getElementById("gradientColor7-wrap"),
+  ];
   const gradientTypeLinearBtn = document.getElementById("gradientTypeLinear");
   const gradientTypeRadialBtn = document.getElementById("gradientTypeRadial");
   const gradientLinearControls = document.getElementById("gradientLinearControls");
@@ -1660,9 +1742,10 @@ function initUI() {
 
   function updateGradientColorVisibility() {
     const n = state.gradientColorCount;
-    if (gradientColor1Wrap) gradientColor1Wrap.style.display = n >= 2 ? "block" : "none";
-    if (gradientColor2Wrap) gradientColor2Wrap.style.display = n >= 3 ? "block" : "none";
-    if (gradientColor3Wrap) gradientColor3Wrap.style.display = n >= 4 ? "block" : "none";
+    for (let i = 1; i < gradientColorWraps.length; i++) {
+      const w = gradientColorWraps[i];
+      if (w) w.style.display = n >= i + 1 ? "block" : "none";
+    }
   }
 
   function updateRadial2GradientColorVisibility() {
@@ -1698,9 +1781,10 @@ function initUI() {
 
   function updateBitGradientColorVisibility() {
     const n = state.bitGradientColorCount;
-    if (bitGradientColor1Wrap) bitGradientColor1Wrap.style.display = n >= 2 ? "block" : "none";
-    if (bitGradientColor2Wrap) bitGradientColor2Wrap.style.display = n >= 3 ? "block" : "none";
-    if (bitGradientColor3Wrap) bitGradientColor3Wrap.style.display = n >= 4 ? "block" : "none";
+    for (let i = 1; i < bitGradientColorWraps.length; i++) {
+      const w = bitGradientColorWraps[i];
+      if (w) w.style.display = n >= i + 1 ? "block" : "none";
+    }
   }
 
   function syncBitModeButtons() {
@@ -1840,7 +1924,8 @@ function initUI() {
   });
   gradientColorCountSelect.addEventListener("change", () => {
     const v = parseInt(gradientColorCountSelect.value, 10);
-    state.gradientColorCount = v >= 1 && v <= 4 ? v : 3;
+    state.gradientColorCount = v >= 1 && v <= GRADIENT_MAX_STOPS ? v : 3;
+    state.gradientStopOffsets = null; // resize ⇒ revert to even spacing
     updateGradientColorVisibility();
   });
   if (gradientRadialCanvasBackgroundInput) {
@@ -1851,7 +1936,8 @@ function initUI() {
   if (gradientRadial2ColorCountSelect) {
     gradientRadial2ColorCountSelect.addEventListener("change", () => {
       const v = parseInt(gradientRadial2ColorCountSelect.value, 10);
-      state.gradientRadial2ColorCount = v >= 1 && v <= 4 ? v : 2;
+      state.gradientRadial2ColorCount = v >= 1 && v <= GRADIENT_MAX_STOPS ? v : 2;
+      state.gradientRadial2StopOffsets = null;
       updateRadial2GradientColorVisibility();
     });
   }
@@ -1885,7 +1971,8 @@ function initUI() {
     bitGradientColorCountSelect.value = String(state.bitGradientColorCount);
     bitGradientColorCountSelect.addEventListener("change", () => {
       const v = parseInt(bitGradientColorCountSelect.value, 10);
-      state.bitGradientColorCount = v >= 1 && v <= 4 ? v : 3;
+      state.bitGradientColorCount = v >= 1 && v <= GRADIENT_MAX_STOPS ? v : 3;
+      state.bitGradientStopOffsets = null;
       updateBitGradientColorVisibility();
     });
   }
@@ -2386,6 +2473,20 @@ function initUI() {
     syncHexFieldsFromColorPickers();
   }
 
+  const wireShortcut = (id, fn) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("click", () => {
+      fn();
+      syncFullUI();
+    });
+  };
+  wireShortcut("shortcutMarkInk", applyShortcutMarkInk);
+  wireShortcut("shortcutMarkPaper", applyShortcutMarkPaper);
+  wireShortcut("shortcutHeroInk", applyShortcutHeroInk);
+  wireShortcut("shortcutHeroPaper", applyShortcutHeroPaper);
+  wireShortcut("shortcutMotion", applyShortcutMotion);
+
   document.getElementById("shortcutDefault").addEventListener("click", () => {
     applyShortcutDefault();
     syncFullUI();
@@ -2461,6 +2562,33 @@ function randomPalettePresetColor() {
   return PALETTE_PRESET_HEX[Math.floor(Math.random() * PALETTE_PRESET_HEX.length)].toLowerCase();
 }
 
+/** Pad a colors array to GRADIENT_MAX_STOPS by repeating the last entry. */
+function padStopColors(colors) {
+  const out = colors.slice();
+  const fill = colors[colors.length - 1] || "#000000";
+  while (out.length < GRADIENT_MAX_STOPS) out.push(fill);
+  return out;
+}
+
+/**
+ * Apply a brand gradient preset { colors[], offsets[] } to a `target` namespace:
+ * "bit" sets bitGradient*; "bg" sets gradient* (the background).
+ */
+function applyGradientPreset(target, preset) {
+  const colors = padStopColors(preset.colors);
+  const n = preset.colors.length;
+  const offsets = preset.offsets.slice();
+  if (target === "bit") {
+    state.bitGradientColors = colors;
+    state.bitGradientColorCount = n;
+    state.bitGradientStopOffsets = offsets;
+  } else if (target === "bg") {
+    state.gradientColors = colors;
+    state.gradientColorCount = n;
+    state.gradientStopOffsets = offsets;
+  }
+}
+
 /** Reset bit-fill state to solid-white. Shared by Default / Auto so a switch back
  *  always lands on a known-good baseline regardless of prior gradient tweaks. */
 function resetBitFillToSolidDefault() {
@@ -2471,7 +2599,8 @@ function resetBitFillToSolidDefault() {
   state.bitGradientScreenAngleDeg = 135;
   state.bitGradientArmAxis = 0;
   state.bitGradientColorCount = 3;
-  state.bitGradientColors = [...DEFAULT_BIT_GRADIENT_COLORS];
+  state.bitGradientColors = padStopColors([...DEFAULT_BIT_GRADIENT_COLORS]);
+  state.bitGradientStopOffsets = null;
   state.bitGradientLinearSpan = 0.3;
   state.bitGradientRadialRadius = 0.4;
   state.bitGradientRadialWidth = 1;
@@ -2479,6 +2608,94 @@ function resetBitFillToSolidDefault() {
   state.bitGradientRadialOffsetX = 0;
   state.bitGradientRadialOffsetY = 0;
   state.bitGradientLasersInherit = true;
+}
+
+/**
+ * Shared baseline for brand presets — sets the official pose, default geometry,
+ * solid ink/paper background, no motion, lasers off. Caller then layers
+ * paper-vs-ink and bit-fill choices.
+ */
+function applyBrandBaseline() {
+  state.seed = 1;
+  state.thickness = DEFAULT_THICKNESS;
+  state.filletRadius = DEFAULT_FILLET_RADIUS;
+  state.caltropZoom = DEFAULT_CALTROP_ZOOM;
+  state.autoRotateSpeed = DEFAULT_AUTO_ROTATE_SPEED;
+  state.lenX = DEFAULT_ARM_LENGTHS.lenX;
+  state.lenY = DEFAULT_ARM_LENGTHS.lenY;
+  state.lenZ = DEFAULT_ARM_LENGTHS.lenZ;
+  state.lenDiag = DEFAULT_ARM_LENGTHS.lenDiag;
+  state.showFourthArm = false;
+  state.fourthArmAzimuthDeg = DEFAULT_FOURTH_ARM_AZIMUTH_DEG;
+  state.fourthArmElevationDeg = DEFAULT_FOURTH_ARM_ELEVATION_DEG;
+  state.autoRotate = false;
+  state.autoLength = false;
+  state.showLaserGuides = false;
+  state.showGridLines = false;
+  state.laserGuideThickness = LASER_GUIDE_DEFAULT_THICKNESS;
+  state.laserGuideOpacity = LASER_GUIDE_DEFAULT_OPACITY;
+  state.backgroundMode = "solid";
+  state.gradientRadial2Enabled = false;
+  resetBitFillToSolidDefault();
+  caltropGroup.rotation.set(
+    DEFAULT_POSE_EULER_DEG.x * DEG2RAD,
+    DEFAULT_POSE_EULER_DEG.y * DEG2RAD,
+    DEFAULT_POSE_EULER_DEG.z * DEG2RAD
+  );
+  resetCameraToDefault();
+}
+
+/** Brand mark: solid coral bit on ink background, official pose, no motion. */
+function applyShortcutMarkInk() {
+  applyBrandBaseline();
+  state.solidBackgroundColor = BRAND_INK;
+  state.bitMode = "solid";
+  state.bitColorHex = BRAND_CORAL;
+}
+
+/** Brand mark: solid coral bit on paper background. */
+function applyShortcutMarkPaper() {
+  applyBrandBaseline();
+  state.solidBackgroundColor = BRAND_PAPER;
+  state.bitMode = "solid";
+  state.bitColorHex = BRAND_CORAL;
+}
+
+/** Hero variant: Tracebit Spectrum gradient on ink. Static pose. */
+function applyShortcutHeroInk() {
+  applyBrandBaseline();
+  state.solidBackgroundColor = BRAND_INK;
+  state.bitMode = "gradient";
+  state.bitGradientType = "linear";
+  state.bitGradientAlignMode = "screen";
+  state.bitGradientScreenAngleDeg = 135;
+  state.bitGradientLinearSpan = 0.35;
+  state.bitGradientLasersInherit = true;
+  applyGradientPreset("bit", BRAND_GRADIENT_SPECTRUM);
+}
+
+/** Hero variant: Tracebit Spectrum gradient on paper. */
+function applyShortcutHeroPaper() {
+  applyBrandBaseline();
+  state.solidBackgroundColor = BRAND_PAPER;
+  state.bitMode = "gradient";
+  state.bitGradientType = "linear";
+  state.bitGradientAlignMode = "screen";
+  state.bitGradientScreenAngleDeg = 135;
+  state.bitGradientLinearSpan = 0.35;
+  state.bitGradientLasersInherit = true;
+  applyGradientPreset("bit", BRAND_GRADIENT_SPECTRUM);
+}
+
+/** Animated brand lockup: coral on ink with Auto Rotate + Auto Length. */
+function applyShortcutMotion() {
+  applyBrandBaseline();
+  state.solidBackgroundColor = BRAND_INK;
+  state.bitMode = "solid";
+  state.bitColorHex = BRAND_CORAL;
+  state.autoRotate = true;
+  state.autoLength = true;
+  state.planeAngleLimitDeg = 0;
 }
 
 function applyShortcutDefault() {
@@ -2499,10 +2716,12 @@ function applyShortcutDefault() {
   state.gradientRadial2OffsetX = 0.2;
   state.gradientRadial2OffsetY = -0.15;
   state.gradientRadial2ColorCount = 2;
-  state.gradientRadial2Colors = [...DEFAULT_GRADIENT2_COLORS];
+  state.gradientRadial2Colors = padStopColors([...DEFAULT_GRADIENT2_COLORS]);
+  state.gradientRadial2StopOffsets = null;
   state.gradientAlignAxis = 0;
   state.gradientColorCount = 3;
-  state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
+  state.gradientColors = padStopColors([...DEFAULT_GRADIENT_COLORS]);
+  state.gradientStopOffsets = null;
   state.bitColorHex = "#ffffff";
   resetBitFillToSolidDefault();
   state.autoRotate = false;
@@ -2548,10 +2767,12 @@ function applyShortcutAuto() {
   state.gradientRadial2OffsetX = 0.2;
   state.gradientRadial2OffsetY = -0.15;
   state.gradientRadial2ColorCount = 2;
-  state.gradientRadial2Colors = [...DEFAULT_GRADIENT2_COLORS];
+  state.gradientRadial2Colors = padStopColors([...DEFAULT_GRADIENT2_COLORS]);
+  state.gradientRadial2StopOffsets = null;
   state.gradientAlignAxis = 0;
   state.gradientColorCount = 3;
-  state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
+  state.gradientColors = padStopColors([...DEFAULT_GRADIENT_COLORS]);
+  state.gradientStopOffsets = null;
   state.bitColorHex = "#ffffff";
   resetBitFillToSolidDefault();
   state.autoRotate = true;
@@ -2593,7 +2814,8 @@ function applyShortcutVibes() {
   state.backgroundMode = "gradient";
   state.gradientType = "radial";
   state.gradientColorCount = 1;
-  state.gradientColors = ["#8a9a8e", "#f5e6e8", "#c45c3e", "#2a1810"];
+  state.gradientColors = padStopColors(["#8a9a8e", "#f5e6e8", "#c45c3e", "#2a1810"]);
+  state.gradientStopOffsets = null;
   state.gradientAlignAxis = 0;
   state.gradientRadialCanvasBackground = "#f5e6e8";
   state.gradientRadialRadius = 0.39;
@@ -2608,7 +2830,8 @@ function applyShortcutVibes() {
   state.gradientRadial2OffsetX = 0.09;
   state.gradientRadial2OffsetY = -0.15;
   state.gradientRadial2ColorCount = 1;
-  state.gradientRadial2Colors = ["#ffb2b5", "#1a1a1a", "#ba95bd", "#000000"];
+  state.gradientRadial2Colors = padStopColors(["#ffb2b5", "#1a1a1a", "#ba95bd", "#000000"]);
+  state.gradientRadial2StopOffsets = null;
 
   state.showLaserGuides = false;
   state.laserGuideThickness = 0.002;
@@ -2645,8 +2868,9 @@ function applyShortcutRandomCore(pickColor = randomHexColor) {
     state.bitGradientAlignMode = Math.random() < 0.5 ? "screen" : "arm";
     state.bitGradientScreenAngleDeg = Math.floor(Math.random() * 360);
     state.bitGradientArmAxis = Math.floor(Math.random() * 4);
-    state.bitGradientColorCount = 2 + Math.floor(Math.random() * 3); // 2..4
-    for (let i = 0; i < 4; i++) state.bitGradientColors[i] = pickColor();
+    state.bitGradientColorCount = 2 + Math.floor(Math.random() * (GRADIENT_MAX_STOPS - 1));
+    for (let i = 0; i < GRADIENT_MAX_STOPS; i++) state.bitGradientColors[i] = pickColor();
+    state.bitGradientStopOffsets = null;
     state.bitGradientLinearSpan = 0.15 + Math.random() * 0.6;
     state.bitGradientRadialRadius = 0.2 + Math.random() * 0.7;
     state.bitGradientRadialWidth = 0.4 + Math.random() * 1.6;
@@ -2666,11 +2890,12 @@ function applyShortcutRandomCore(pickColor = randomHexColor) {
     state.gradientRadialOffsetX = (Math.random() - 0.5) * 0.6;
     state.gradientRadialOffsetY = (Math.random() - 0.5) * 0.6;
     state.gradientRadialCanvasBackground = pickColor();
-    state.gradientColorCount = 1 + Math.floor(Math.random() * 4);
+    state.gradientColorCount = 1 + Math.floor(Math.random() * GRADIENT_MAX_STOPS);
     state.gradientAlignAxis = Math.floor(Math.random() * 4);
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < GRADIENT_MAX_STOPS; i++) {
       state.gradientColors[i] = pickColor();
     }
+    state.gradientStopOffsets = null;
     if (state.gradientType === "radial") {
       state.gradientRadial2Enabled = Math.random() < 0.4;
       if (state.gradientRadial2Enabled) {
@@ -2679,8 +2904,9 @@ function applyShortcutRandomCore(pickColor = randomHexColor) {
         state.gradientRadial2Height = 0.4 + Math.random() * 1.6;
         state.gradientRadial2OffsetX = (Math.random() - 0.5) * 0.7;
         state.gradientRadial2OffsetY = (Math.random() - 0.5) * 0.7;
-        state.gradientRadial2ColorCount = 1 + Math.floor(Math.random() * 4);
-        for (let i = 0; i < 4; i++) {
+        state.gradientRadial2ColorCount = 1 + Math.floor(Math.random() * GRADIENT_MAX_STOPS);
+        state.gradientRadial2StopOffsets = null;
+        for (let i = 0; i < GRADIENT_MAX_STOPS; i++) {
           state.gradientRadial2Colors[i] = pickColor();
         }
       }
@@ -2717,7 +2943,7 @@ function applyShortcutFullRandom() {
   state.gridSpacingZ = gsMin + Math.random() * (gsMax - gsMin);
 }
 
-function buildSvgRadialStopsInnerXml(n, colors, canvasBgForOneStop, transparentOneColorOuter) {
+function buildSvgRadialStopsInnerXml(n, colors, canvasBgForOneStop, transparentOneColorOuter, offsetsArr) {
   if (n === 1) {
     if (transparentOneColorOuter) {
       const c = colors[0];
@@ -2725,9 +2951,10 @@ function buildSvgRadialStopsInnerXml(n, colors, canvasBgForOneStop, transparentO
     }
     return `<stop offset="0" stop-color="${colors[0]}"/><stop offset="1" stop-color="${canvasBgForOneStop}"/>`;
   }
+  const offs = effectiveStopOffsets(offsetsArr, n);
   let s = "";
   for (let i = 0; i < n; i++) {
-    s += `<stop offset="${i / (n - 1)}" stop-color="${colors[i]}"/>`;
+    s += `<stop offset="${offs[i]}" stop-color="${colors[i]}"/>`;
   }
   return s;
 }
@@ -2755,8 +2982,9 @@ function buildSvgBackgroundLayer(size, half, camRight, camUp, rotMatrix) {
     stops.push(`<stop offset="0" stop-color="${state.gradientColors[0]}"/>`);
     stops.push(`<stop offset="1" stop-color="${state.gradientRadialCanvasBackground}"/>`);
   } else if (n > 1) {
+    const offs = effectiveStopOffsets(state.gradientStopOffsets, n);
     for (let i = 0; i < n; i++) {
-      stops.push(`<stop offset="${i / (n - 1)}" stop-color="${state.gradientColors[i]}"/>`);
+      stops.push(`<stop offset="${offs[i]}" stop-color="${state.gradientColors[i]}"/>`);
     }
   }
   if (state.gradientType === "radial") {
@@ -2764,7 +2992,8 @@ function buildSvgBackgroundLayer(size, half, camRight, camUp, rotMatrix) {
       n,
       state.gradientColors,
       state.gradientRadialCanvasBackground,
-      false
+      false,
+      state.gradientStopOffsets
     );
     const def1 = buildSvgRadialGradientDef(
       "bgGradient",
@@ -2782,7 +3011,7 @@ function buildSvgBackgroundLayer(size, half, camRight, camUp, rotMatrix) {
     let rects = `<rect width="${size}" height="${size}" fill="${bg}"/><rect width="${size}" height="${size}" fill="url(#bgGradient)"/>`;
     if (state.gradientRadial2Enabled) {
       const n2 = clampGradientColorCount(state.gradientRadial2ColorCount);
-      const inner2 = buildSvgRadialStopsInnerXml(n2, state.gradientRadial2Colors, "", n2 === 1);
+      const inner2 = buildSvgRadialStopsInnerXml(n2, state.gradientRadial2Colors, "", n2 === 1, state.gradientRadial2StopOffsets);
       defs += buildSvgRadialGradientDef(
         "bgGradient2",
         half,
@@ -2851,8 +3080,9 @@ function buildSvgBitGradient(size, half, camRight, camUp, rotMatrix) {
       const c = state.bitGradientColors[0];
       stops = `<stop offset="0" stop-color="${c}" stop-opacity="1"/><stop offset="1" stop-color="${c}" stop-opacity="0"/>`;
     } else {
+      const offs = effectiveStopOffsets(state.bitGradientStopOffsets, n);
       for (let i = 0; i < n; i++) {
-        stops += `<stop offset="${i / (n - 1)}" stop-color="${state.bitGradientColors[i]}"/>`;
+        stops += `<stop offset="${offs[i]}" stop-color="${state.bitGradientColors[i]}"/>`;
       }
     }
     const def = `<radialGradient id="bitGradient" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="${xf}">${stops}</radialGradient>`;
@@ -2889,8 +3119,9 @@ function buildSvgBitGradient(size, half, camRight, camUp, rotMatrix) {
     const c = state.bitGradientColors[0];
     stops = `<stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${c}"/>`;
   } else {
+    const offs = effectiveStopOffsets(state.bitGradientStopOffsets, n);
     for (let i = 0; i < n; i++) {
-      stops += `<stop offset="${i / (n - 1)}" stop-color="${state.bitGradientColors[i]}"/>`;
+      stops += `<stop offset="${offs[i]}" stop-color="${state.bitGradientColors[i]}"/>`;
     }
   }
   const def = `<linearGradient id="bitGradient" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" spreadMethod="pad">${stops}</linearGradient>`;

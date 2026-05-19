@@ -6,6 +6,12 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Brand palette + brand gradients.** Color-picker preset row now shows the finalized Tracebit palette (ink `#231F20`, paper `#F3EFEC`, coral `#EA6F53`, secondary swatches). Four canonical brand gradients available as named constants (`BRAND_GRADIENT_SPECTRUM`, `BRAND_GRADIENT_SPECTRUM_REORDER`, `BRAND_GRADIENT_WARM`, `BRAND_GRADIENT_COOL`) with the exact per-stop offsets from `resources/gradients.svg`.
+- **Named brand shortcuts:** `Mark · Ink`, `Mark · Paper`, `Hero · Ink`, `Hero · Paper`, `Motion`. Old Default/Auto/Vibes/Random/Full Random kept under an "Exploration" section.
+- **8-stop gradients with per-stop offsets.** Bit and background gradients support 1–8 stops (up from 4) and an optional offsets array — the existing brand spectrum gradient has 8 stops with non-uniform offsets and now exports faithfully. Even spacing is still the default when no offsets array is supplied.
+
+### Added
+
 - **Bit gradient fill.** Bit color now has a Solid / Gradient toggle. Gradient mode supports linear (screen-angle or arm-aligned) and radial (size / oval width-height / offset) with 1–4 stops, drawn on the 2D overlay and clipped to the arm+fillet silhouette. Laser guides can inherit the gradient via a toggle (defaults on). SVG export emits a matching `<linearGradient>` / `<radialGradient>` def referenced by `fill="url(#bitGradient)"` on every arm and fillet path (and on laser strokes when inherit is on).
 
 ### Fixed
