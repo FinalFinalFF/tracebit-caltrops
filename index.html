@@ -469,9 +469,125 @@
         <div class="section-body">
           <div class="control-group">
             <div class="control-label-row">
-              <span>Bit Color</span>
+              <span>Bit fill</span>
+            </div>
+            <div class="button-row">
+              <button id="bitModeSolid" type="button" class="primary">Solid</button>
+              <button id="bitModeGradient" type="button">Gradient</button>
+            </div>
+          </div>
+          <div id="bitSolidControls" class="control-group">
+            <div class="control-label-row">
+              <span>Bit color</span>
             </div>
             <input id="bitColor" type="color" value="#ffffff" />
+          </div>
+          <div id="bitGradientControls" class="gradient-colors" style="display: none;">
+            <div class="control-group">
+              <div class="control-label-row">
+                <span>Gradient shape</span>
+              </div>
+              <div class="button-row">
+                <button id="bitGradientTypeLinear" type="button" class="primary">Linear</button>
+                <button id="bitGradientTypeRadial" type="button">Radial</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <div class="control-label-row">
+                <span>Color stops</span>
+              </div>
+              <select id="bitGradientColorCount" class="bg-select">
+                <option value="1">1 color</option>
+                <option value="2">2 colors</option>
+                <option value="3" selected>3 colors</option>
+                <option value="4">4 colors</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <div class="control-label-row"><span>Color 1</span></div>
+              <input id="bitGradientColor0" type="color" value="#c91f5e" />
+            </div>
+            <div class="control-group" id="bitGradientColor1-wrap">
+              <div class="control-label-row"><span>Color 2</span></div>
+              <input id="bitGradientColor1" type="color" value="#ff8a3c" />
+            </div>
+            <div class="control-group" id="bitGradientColor2-wrap">
+              <div class="control-label-row"><span>Color 3</span></div>
+              <input id="bitGradientColor2" type="color" value="#f5e6e8" />
+            </div>
+            <div class="control-group" id="bitGradientColor3-wrap" style="display: none;">
+              <div class="control-label-row"><span>Color 4</span></div>
+              <input id="bitGradientColor3" type="color" value="#a8c0b0" />
+            </div>
+            <div id="bitGradientLinearControls" class="control-group">
+              <div class="subsection-title">Linear</div>
+              <div class="control-label-row">
+                <span>Alignment</span>
+              </div>
+              <div class="button-row">
+                <button id="bitGradientAlignScreen" type="button" class="primary">Screen</button>
+                <button id="bitGradientAlignArm" type="button">Arm</button>
+              </div>
+              <div id="bitGradientScreenControls" class="control-group">
+                <div class="control-label-row row-mt">
+                  <span>Angle</span>
+                  <input type="number" class="value value-num" id="bitGradientScreenAngle-value" inputmode="decimal" />
+                </div>
+                <input id="bitGradientScreenAngle" type="range" min="0" max="360" step="1" value="135" />
+              </div>
+              <div id="bitGradientArmControls" class="control-group" style="display: none;">
+                <div class="control-label-row row-mt">
+                  <span>Align gradient to</span>
+                </div>
+                <select id="bitGradientArmAxis" class="bg-select">
+                  <option value="0" selected>X axis arm</option>
+                  <option value="1">Y axis arm</option>
+                  <option value="2">Z axis arm</option>
+                  <option value="3">Fourth arm direction</option>
+                </select>
+              </div>
+              <div class="control-label-row row-mt">
+                <span>Span</span>
+                <input type="number" class="value value-num" id="bitGradientLinearSpan-value" inputmode="decimal" />
+              </div>
+              <input id="bitGradientLinearSpan" type="range" min="0.02" max="2" step="0.01" value="0.3" />
+              <p class="hint hint-tight">Fraction of the canvas diagonal the gradient spans. Lower values compress the full stop range into the bit's footprint.</p>
+            </div>
+            <div id="bitGradientRadialControls" class="control-group" style="display: none;">
+              <div class="subsection-title">Radial</div>
+              <div class="control-label-row row-mt">
+                <span>Radial size</span>
+                <input type="number" class="value value-num" id="bitGradientRadialRadius-value" inputmode="decimal" />
+              </div>
+              <input id="bitGradientRadialRadius" type="range" min="0.02" max="3" step="0.01" value="0.4" />
+              <div class="control-label-row row-mt">
+                <span>Oval width</span>
+                <input type="number" class="value value-num" id="bitGradientRadialWidth-value" inputmode="decimal" />
+              </div>
+              <input id="bitGradientRadialWidth" type="range" min="0.05" max="8" step="0.01" value="1" />
+              <div class="control-label-row row-mt-sm">
+                <span>Oval height</span>
+                <input type="number" class="value value-num" id="bitGradientRadialHeight-value" inputmode="decimal" />
+              </div>
+              <input id="bitGradientRadialHeight" type="range" min="0.05" max="8" step="0.01" value="1" />
+              <div class="control-label-row row-mt-sm">
+                <span>Offset X</span>
+                <input type="number" class="value value-num" id="bitGradientRadialOffsetX-value" inputmode="decimal" />
+              </div>
+              <input id="bitGradientRadialOffsetX" type="range" min="-0.5" max="0.5" step="0.005" value="0" />
+              <div class="control-label-row row-mt-sm">
+                <span>Offset Y</span>
+                <input type="number" class="value value-num" id="bitGradientRadialOffsetY-value" inputmode="decimal" />
+              </div>
+              <input id="bitGradientRadialOffsetY" type="range" min="-0.5" max="0.5" step="0.005" value="0" />
+            </div>
+            <div class="control-group">
+              <div class="control-label-row row-mt">
+                <span>Lasers inherit gradient</span>
+                <button id="bitGradientLasersInheritToggle" type="button" class="primary">On</button>
+              </div>
+              <p class="hint hint-tight">When on, laser guides take the same gradient as the bit. Turn off to keep lasers in the solid Bit color.</p>
+            </div>
           </div>
           <hr class="section-divider" />
           <div class="control-group">

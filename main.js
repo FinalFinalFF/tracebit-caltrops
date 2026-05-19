@@ -67,6 +67,12 @@ const DEFAULT_GRADIENT_COLORS = Object.freeze(["#8a9a8e", "#f5e6e8", "#c45c3e", 
 /** Default second-radial stops (independent layer on top). */
 const DEFAULT_GRADIENT2_COLORS = Object.freeze(["#ffffff", "#1a1a1a", "#BA95BD", "#000000"]);
 
+/** Default bit gradient stops — magenta → orange → pale, screen-aligned. */
+const DEFAULT_BIT_GRADIENT_COLORS = Object.freeze(["#c91f5e", "#ff8a3c", "#f5e6e8", "#a8c0b0"]);
+
+/** Reused canvas-space direction when the projected arm is edge-on (arm-align mode only). */
+let lastBitGradientCanvasDir = { dx: 1, dy: 0 };
+
 /** Quick-pick swatches for all color controls (hex field + native picker). */
 const PALETTE_PRESET_HEX = Object.freeze([
   "#EBEBEB",
@@ -131,6 +137,29 @@ const state = {
   gradientColorCount: 3,
   gradientColors: [...DEFAULT_GRADIENT_COLORS],
   bitColorHex: "#ffffff",
+  /** "solid" | "gradient" — gradient fills the caltrop silhouette (arms + fillets). */
+  bitMode: "solid",
+  /** "linear" | "radial" — only when bitMode === "gradient" */
+  bitGradientType: "linear",
+  /** "screen" — fixed angle in canvas space; "arm" — follows projected arm direction. */
+  bitGradientAlignMode: "screen",
+  /** Screen-space gradient angle in degrees (0 = →, 90 = ↓, 135 = ↘). */
+  bitGradientScreenAngleDeg: 135,
+  /** When alignMode === "arm": which arm projection to follow (0 X, 1 Y, 2 Z, 3 fourth). */
+  bitGradientArmAxis: 0,
+  bitGradientColorCount: 3,
+  bitGradientColors: [...DEFAULT_BIT_GRADIENT_COLORS],
+  /** Linear gradient span as a fraction of the canvas diagonal (0.02–2). Tighter values
+   *  compress the gradient toward the canvas center so the full stop range fits inside the bit. */
+  bitGradientLinearSpan: 0.3,
+  /** Radial extent as a fraction of half the canvas diagonal. */
+  bitGradientRadialRadius: 0.4,
+  bitGradientRadialWidth: 1,
+  bitGradientRadialHeight: 1,
+  bitGradientRadialOffsetX: 0,
+  bitGradientRadialOffsetY: 0,
+  /** Laser guides inherit the bit gradient (overlay-rendered) when true. */
+  bitGradientLasersInherit: true,
   showGridLines: false,
   /** Lines parallel to each axis on one coordinate face (see updateGridLines); count per side of origin. */
   gridCountX: 4,
@@ -489,11 +518,97 @@ function updateArmProjections() {
   updateFilletCircles(arms);
 }
 
+/**
+ * Build the canvas2D fillStyle (CSS color or CanvasGradient) for the caltrop bit.
+ * Returns an object { fill, stroke } — they're typically the same value, but kept
+ * separate so callers can use stroke for laser lines without re-deriving.
+ *
+ * Canvas coordinates: x→ right, y↓ down. Y is flipped relative to world.
+ */
+function buildBitCanvasFillStyle(ctx, canvasW, canvasH) {
+  if (state.bitMode !== "gradient") {
+    return { fill: state.bitColorHex, stroke: state.bitColorHex };
+  }
+  const n = clampGradientColorCount(state.bitGradientColorCount);
+  const cx = canvasW * 0.5;
+  const cy = canvasH * 0.5;
+
+  if (state.bitGradientType === "radial") {
+    const halfDiag = Math.hypot(canvasW, canvasH) * 0.5;
+    const base = Math.max(8, halfDiag * Math.max(0.02, Math.min(3, state.bitGradientRadialRadius)));
+    const rx = base * Math.max(0.05, Math.min(8, state.bitGradientRadialWidth));
+    const ry = base * Math.max(0.05, Math.min(8, state.bitGradientRadialHeight));
+    const oox = Math.max(-0.5, Math.min(0.5, state.bitGradientRadialOffsetX));
+    const ooy = Math.max(-0.5, Math.min(0.5, state.bitGradientRadialOffsetY));
+    const gcx = cx + oox * canvasW;
+    const gcy = cy + ooy * canvasH;
+    // Use the larger semi-axis as gradient radius; transform when filling for ellipse.
+    const rad = Math.max(rx, ry);
+    const g = ctx.createRadialGradient(gcx, gcy, 0, gcx, gcy, rad);
+    if (n === 1) {
+      g.addColorStop(0, state.bitGradientColors[0]);
+      const rgb = hexColorToRgb(state.bitGradientColors[0]);
+      g.addColorStop(1, rgb ? `rgba(${rgb.r},${rgb.g},${rgb.b},0)` : "rgba(0,0,0,0)");
+    } else {
+      for (let i = 0; i < n; i++) {
+        g.addColorStop(i / (n - 1), state.bitGradientColors[i]);
+      }
+    }
+    return { fill: g, stroke: g };
+  }
+
+  // Linear gradient — direction in canvas space (x right, y down).
+  let dx = 1;
+  let dyC = 0;
+  if (state.bitGradientAlignMode === "arm") {
+    const axis = Math.max(0, Math.min(3, state.bitGradientArmAxis | 0));
+    const proj = lastArmScreenProjection[axis];
+    dx = lastBitGradientCanvasDir.dx;
+    dyC = lastBitGradientCanvasDir.dy;
+    if (proj && proj.projFactor > LASER_GUIDE_EPS) {
+      const ndx = proj.px / proj.projFactor;
+      const ndy = -proj.py / proj.projFactor;
+      const len = Math.hypot(ndx, ndy);
+      if (len > LASER_GUIDE_EPS) {
+        dx = ndx / len;
+        dyC = ndy / len;
+        lastBitGradientCanvasDir = { dx, dy: dyC };
+      }
+    }
+  } else {
+    const theta = (state.bitGradientScreenAngleDeg || 0) * DEG2RAD;
+    dx = Math.cos(theta);
+    dyC = Math.sin(theta);
+  }
+  const spanFrac = Math.max(0.02, Math.min(2, state.bitGradientLinearSpan));
+  const L = Math.hypot(canvasW, canvasH) * 0.5 * spanFrac;
+  const x0 = cx - dx * L;
+  const y0 = cy - dyC * L;
+  const x1 = cx + dx * L;
+  const y1 = cy + dyC * L;
+  const g = ctx.createLinearGradient(x0, y0, x1, y1);
+  if (n === 1) {
+    g.addColorStop(0, state.bitGradientColors[0]);
+    g.addColorStop(1, state.bitGradientColors[0]);
+  } else {
+    for (let i = 0; i < n; i++) {
+      g.addColorStop(i / (n - 1), state.bitGradientColors[i]);
+    }
+  }
+  return { fill: g, stroke: g };
+}
+
 function updateFilletCircles(arms) {
   // WebGL fillet circles aren't used — arms + fillets are fully drawn on the 2D overlay.
   for (let i = 0; i < filletCircles.length; i++) filletCircles[i].visible = false;
   // Hide the WebGL arm meshes too; the overlay is now authoritative for the logo shape.
   [armMeshX, armMeshY, armMeshZ, armMeshDiag].forEach((m) => { if (m) m.visible = false; });
+
+  // When the bit gradient is on with laser inheritance, lasers move to the overlay too.
+  const lasersOnOverlay = state.bitMode === "gradient" && state.bitGradientLasersInherit;
+  if (lasersOnOverlay) {
+    [guideMeshX, guideMeshY, guideMeshZ, guideMeshDiag].forEach((g) => { if (g) g.visible = false; });
+  }
 
   if (!filletOverlayCtx || !filletOverlayCanvas) return;
 
@@ -523,11 +638,39 @@ function updateFilletCircles(arms) {
     const ny = proj.py / proj.projFactor;
     const halfLen = (proj.projFactor * arm.len) / 2;
     if (halfLen <= hw) continue;
-    armList.push({ nx, ny, halfLen });
+    armList.push({ nx, ny, halfLen, armIndex: i });
   }
+
+  // Draw inherited lasers underneath the arms so arm rectangles cover the laser stripe within the bit.
+  if (lasersOnOverlay && state.showLaserGuides) {
+    const halfWf = (camera.right - camera.left) * 0.5;
+    const halfHf = (camera.top - camera.bottom) * 0.5;
+    const { stroke: laserStroke } = buildBitCanvasFillStyle(ctx, canvasW, canvasH);
+    const laserPx = Math.max(state.laserGuideThickness, 0.001) * scale;
+    ctx.save();
+    ctx.globalAlpha = state.laserGuideOpacity;
+    ctx.strokeStyle = laserStroke;
+    ctx.lineWidth = laserPx;
+    ctx.lineCap = "butt";
+    for (let i = 0; i < arms.length; i++) {
+      const arm = arms[i];
+      const proj = lastArmScreenProjection[i];
+      if (!arm.draw || proj.projFactor < LASER_GUIDE_EPS) continue;
+      const dxw = proj.px / proj.projFactor;
+      const dyw = proj.py / proj.projFactor;
+      const halfGuideLen = distanceToViewportEdge(dxw, dyw, halfWf, halfHf);
+      ctx.beginPath();
+      ctx.moveTo(toPxX(-dxw * halfGuideLen), toPxY(-dyw * halfGuideLen));
+      ctx.lineTo(toPxX(dxw * halfGuideLen), toPxY(dyw * halfGuideLen));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   if (armList.length === 0) return;
 
-  ctx.fillStyle = state.bitColorHex;
+  const { fill: bitFill } = buildBitCanvasFillStyle(ctx, canvasW, canvasH);
+  ctx.fillStyle = bitFill;
 
   // Pass 1 — draw each arm as a rotated filled rectangle. Robust across all poses:
   // the union is always a well-formed shape, no self-intersecting polygon walks.
@@ -1116,6 +1259,44 @@ function initUI() {
   const poseResetBtn = document.getElementById("poseReset");
   const resetArmLengthsBtn = document.getElementById("resetArmLengths");
   const bitColorInput = document.getElementById("bitColor");
+  const bitModeSolidBtn = document.getElementById("bitModeSolid");
+  const bitModeGradientBtn = document.getElementById("bitModeGradient");
+  const bitSolidControls = document.getElementById("bitSolidControls");
+  const bitGradientControls = document.getElementById("bitGradientControls");
+  const bitGradientTypeLinearBtn = document.getElementById("bitGradientTypeLinear");
+  const bitGradientTypeRadialBtn = document.getElementById("bitGradientTypeRadial");
+  const bitGradientLinearControls = document.getElementById("bitGradientLinearControls");
+  const bitGradientRadialControls = document.getElementById("bitGradientRadialControls");
+  const bitGradientAlignScreenBtn = document.getElementById("bitGradientAlignScreen");
+  const bitGradientAlignArmBtn = document.getElementById("bitGradientAlignArm");
+  const bitGradientScreenControls = document.getElementById("bitGradientScreenControls");
+  const bitGradientArmControls = document.getElementById("bitGradientArmControls");
+  const bitGradientScreenAngleInput = document.getElementById("bitGradientScreenAngle");
+  const bitGradientScreenAngleValue = document.getElementById("bitGradientScreenAngle-value");
+  const bitGradientArmAxisSelect = document.getElementById("bitGradientArmAxis");
+  const bitGradientLinearSpanInput = document.getElementById("bitGradientLinearSpan");
+  const bitGradientLinearSpanValue = document.getElementById("bitGradientLinearSpan-value");
+  const bitGradientColorCountSelect = document.getElementById("bitGradientColorCount");
+  const bitGradientColorInputs = [
+    document.getElementById("bitGradientColor0"),
+    document.getElementById("bitGradientColor1"),
+    document.getElementById("bitGradientColor2"),
+    document.getElementById("bitGradientColor3"),
+  ];
+  const bitGradientColor1Wrap = document.getElementById("bitGradientColor1-wrap");
+  const bitGradientColor2Wrap = document.getElementById("bitGradientColor2-wrap");
+  const bitGradientColor3Wrap = document.getElementById("bitGradientColor3-wrap");
+  const bitGradientRadialRadiusInput = document.getElementById("bitGradientRadialRadius");
+  const bitGradientRadialRadiusValue = document.getElementById("bitGradientRadialRadius-value");
+  const bitGradientRadialWidthInput = document.getElementById("bitGradientRadialWidth");
+  const bitGradientRadialWidthValue = document.getElementById("bitGradientRadialWidth-value");
+  const bitGradientRadialHeightInput = document.getElementById("bitGradientRadialHeight");
+  const bitGradientRadialHeightValue = document.getElementById("bitGradientRadialHeight-value");
+  const bitGradientRadialOffsetXInput = document.getElementById("bitGradientRadialOffsetX");
+  const bitGradientRadialOffsetXValue = document.getElementById("bitGradientRadialOffsetX-value");
+  const bitGradientRadialOffsetYInput = document.getElementById("bitGradientRadialOffsetY");
+  const bitGradientRadialOffsetYValue = document.getElementById("bitGradientRadialOffsetY-value");
+  const bitGradientLasersInheritToggle = document.getElementById("bitGradientLasersInheritToggle");
 
   const seedDisplay = document.getElementById("seed-display");
   const seedPrev = document.getElementById("seedPrev");
@@ -1226,6 +1407,7 @@ function initUI() {
     gradientRadialCanvasBackgroundInput,
     ...gradientColorInputs,
     ...gradientRadial2ColorInputs,
+    ...bitGradientColorInputs,
   ].forEach((el) => {
     mountColorPresetsAndHex(el);
   });
@@ -1260,6 +1442,13 @@ function initUI() {
     if (gridSpacingXValue) gridSpacingXValue.value = state.gridSpacingX.toFixed(3);
     if (gridSpacingYValue) gridSpacingYValue.value = state.gridSpacingY.toFixed(3);
     if (gridSpacingZValue) gridSpacingZValue.value = state.gridSpacingZ.toFixed(3);
+    if (bitGradientScreenAngleValue) bitGradientScreenAngleValue.value = state.bitGradientScreenAngleDeg.toFixed(0);
+    if (bitGradientLinearSpanValue) bitGradientLinearSpanValue.value = state.bitGradientLinearSpan.toFixed(2);
+    if (bitGradientRadialRadiusValue) bitGradientRadialRadiusValue.value = state.bitGradientRadialRadius.toFixed(2);
+    if (bitGradientRadialWidthValue) bitGradientRadialWidthValue.value = state.bitGradientRadialWidth.toFixed(2);
+    if (bitGradientRadialHeightValue) bitGradientRadialHeightValue.value = state.bitGradientRadialHeight.toFixed(2);
+    if (bitGradientRadialOffsetXValue) bitGradientRadialOffsetXValue.value = state.bitGradientRadialOffsetX.toFixed(3);
+    if (bitGradientRadialOffsetYValue) bitGradientRadialOffsetYValue.value = state.bitGradientRadialOffsetY.toFixed(3);
   }
 
   function syncSliders() {
@@ -1292,6 +1481,13 @@ function initUI() {
     if (gridSpacingXInput) gridSpacingXInput.value = state.gridSpacingX.toString();
     if (gridSpacingYInput) gridSpacingYInput.value = state.gridSpacingY.toString();
     if (gridSpacingZInput) gridSpacingZInput.value = state.gridSpacingZ.toString();
+    if (bitGradientScreenAngleInput) bitGradientScreenAngleInput.value = state.bitGradientScreenAngleDeg.toString();
+    if (bitGradientLinearSpanInput) bitGradientLinearSpanInput.value = state.bitGradientLinearSpan.toString();
+    if (bitGradientRadialRadiusInput) bitGradientRadialRadiusInput.value = state.bitGradientRadialRadius.toString();
+    if (bitGradientRadialWidthInput) bitGradientRadialWidthInput.value = state.bitGradientRadialWidth.toString();
+    if (bitGradientRadialHeightInput) bitGradientRadialHeightInput.value = state.bitGradientRadialHeight.toString();
+    if (bitGradientRadialOffsetXInput) bitGradientRadialOffsetXInput.value = state.bitGradientRadialOffsetX.toString();
+    if (bitGradientRadialOffsetYInput) bitGradientRadialOffsetYInput.value = state.bitGradientRadialOffsetY.toString();
     syncPoseSlidersFromRotation();
     updateLengthDisplays();
   }
@@ -1387,6 +1583,27 @@ function initUI() {
   if (poseRotXValue && poseRotXInput) mirrorRangeToValueField(poseRotXValue, poseRotXInput, false);
   if (poseRotYValue && poseRotYInput) mirrorRangeToValueField(poseRotYValue, poseRotYInput, false);
   if (poseRotZValue && poseRotZInput) mirrorRangeToValueField(poseRotZValue, poseRotZInput, false);
+  if (bitGradientScreenAngleValue && bitGradientScreenAngleInput) {
+    mirrorRangeToValueField(bitGradientScreenAngleValue, bitGradientScreenAngleInput, false);
+  }
+  if (bitGradientLinearSpanValue && bitGradientLinearSpanInput) {
+    mirrorRangeToValueField(bitGradientLinearSpanValue, bitGradientLinearSpanInput, false);
+  }
+  if (bitGradientRadialRadiusValue && bitGradientRadialRadiusInput) {
+    mirrorRangeToValueField(bitGradientRadialRadiusValue, bitGradientRadialRadiusInput, false);
+  }
+  if (bitGradientRadialWidthValue && bitGradientRadialWidthInput) {
+    mirrorRangeToValueField(bitGradientRadialWidthValue, bitGradientRadialWidthInput, false);
+  }
+  if (bitGradientRadialHeightValue && bitGradientRadialHeightInput) {
+    mirrorRangeToValueField(bitGradientRadialHeightValue, bitGradientRadialHeightInput, false);
+  }
+  if (bitGradientRadialOffsetXValue && bitGradientRadialOffsetXInput) {
+    mirrorRangeToValueField(bitGradientRadialOffsetXValue, bitGradientRadialOffsetXInput, false);
+  }
+  if (bitGradientRadialOffsetYValue && bitGradientRadialOffsetYInput) {
+    mirrorRangeToValueField(bitGradientRadialOffsetYValue, bitGradientRadialOffsetYInput, false);
+  }
 
   function updateSeedDisplay() {
     seedDisplay.textContent = state.seed.toString();
@@ -1471,6 +1688,49 @@ function initUI() {
     gradientColorInputs.forEach((el, i) => {
       if (el) state.gradientColors[i] = el.value;
     });
+  }
+
+  function readBitGradientColorsFromInputs() {
+    bitGradientColorInputs.forEach((el, i) => {
+      if (el) state.bitGradientColors[i] = el.value;
+    });
+  }
+
+  function updateBitGradientColorVisibility() {
+    const n = state.bitGradientColorCount;
+    if (bitGradientColor1Wrap) bitGradientColor1Wrap.style.display = n >= 2 ? "block" : "none";
+    if (bitGradientColor2Wrap) bitGradientColor2Wrap.style.display = n >= 3 ? "block" : "none";
+    if (bitGradientColor3Wrap) bitGradientColor3Wrap.style.display = n >= 4 ? "block" : "none";
+  }
+
+  function syncBitModeButtons() {
+    const solid = state.bitMode === "solid";
+    if (bitModeSolidBtn) bitModeSolidBtn.classList.toggle("primary", solid);
+    if (bitModeGradientBtn) bitModeGradientBtn.classList.toggle("primary", !solid);
+    if (bitSolidControls) bitSolidControls.style.display = solid ? "block" : "none";
+    if (bitGradientControls) bitGradientControls.style.display = solid ? "none" : "block";
+  }
+
+  function syncBitGradientTypeButtons() {
+    const linear = state.bitGradientType === "linear";
+    if (bitGradientTypeLinearBtn) bitGradientTypeLinearBtn.classList.toggle("primary", linear);
+    if (bitGradientTypeRadialBtn) bitGradientTypeRadialBtn.classList.toggle("primary", !linear);
+    if (bitGradientLinearControls) bitGradientLinearControls.style.display = linear ? "block" : "none";
+    if (bitGradientRadialControls) bitGradientRadialControls.style.display = linear ? "none" : "block";
+  }
+
+  function syncBitGradientAlignButtons() {
+    const screen = state.bitGradientAlignMode === "screen";
+    if (bitGradientAlignScreenBtn) bitGradientAlignScreenBtn.classList.toggle("primary", screen);
+    if (bitGradientAlignArmBtn) bitGradientAlignArmBtn.classList.toggle("primary", !screen);
+    if (bitGradientScreenControls) bitGradientScreenControls.style.display = screen ? "block" : "none";
+    if (bitGradientArmControls) bitGradientArmControls.style.display = screen ? "none" : "block";
+  }
+
+  function syncBitGradientLasersInheritButton() {
+    if (!bitGradientLasersInheritToggle) return;
+    bitGradientLasersInheritToggle.textContent = state.bitGradientLasersInherit ? "On" : "Off";
+    bitGradientLasersInheritToggle.classList.toggle("primary", state.bitGradientLasersInherit);
   }
 
   function readRadial2GradientColorsFromInputs() {
@@ -1612,6 +1872,88 @@ function initUI() {
     bitColorInput.addEventListener("input", () => {
       state.bitColorHex = bitColorInput.value;
       updateBitColorVisuals();
+    });
+  }
+
+  // Bit fill mode & gradient wiring
+  bitGradientColorInputs.forEach((el, i) => {
+    if (!el) return;
+    el.value = state.bitGradientColors[i];
+    el.addEventListener("input", readBitGradientColorsFromInputs);
+  });
+  if (bitGradientColorCountSelect) {
+    bitGradientColorCountSelect.value = String(state.bitGradientColorCount);
+    bitGradientColorCountSelect.addEventListener("change", () => {
+      const v = parseInt(bitGradientColorCountSelect.value, 10);
+      state.bitGradientColorCount = v >= 1 && v <= 4 ? v : 3;
+      updateBitGradientColorVisibility();
+    });
+  }
+  if (bitModeSolidBtn) {
+    bitModeSolidBtn.addEventListener("click", () => {
+      state.bitMode = "solid";
+      syncBitModeButtons();
+    });
+  }
+  if (bitModeGradientBtn) {
+    bitModeGradientBtn.addEventListener("click", () => {
+      state.bitMode = "gradient";
+      syncBitModeButtons();
+    });
+  }
+  if (bitGradientTypeLinearBtn) {
+    bitGradientTypeLinearBtn.addEventListener("click", () => {
+      state.bitGradientType = "linear";
+      syncBitGradientTypeButtons();
+    });
+  }
+  if (bitGradientTypeRadialBtn) {
+    bitGradientTypeRadialBtn.addEventListener("click", () => {
+      state.bitGradientType = "radial";
+      syncBitGradientTypeButtons();
+    });
+  }
+  if (bitGradientAlignScreenBtn) {
+    bitGradientAlignScreenBtn.addEventListener("click", () => {
+      state.bitGradientAlignMode = "screen";
+      syncBitGradientAlignButtons();
+    });
+  }
+  if (bitGradientAlignArmBtn) {
+    bitGradientAlignArmBtn.addEventListener("click", () => {
+      state.bitGradientAlignMode = "arm";
+      syncBitGradientAlignButtons();
+    });
+  }
+  if (bitGradientScreenAngleInput) {
+    bitGradientScreenAngleInput.addEventListener("input", () => {
+      state.bitGradientScreenAngleDeg = parseFloat(bitGradientScreenAngleInput.value);
+      updateLengthDisplays();
+    });
+  }
+  if (bitGradientArmAxisSelect) {
+    bitGradientArmAxisSelect.value = String(state.bitGradientArmAxis);
+    bitGradientArmAxisSelect.addEventListener("change", () => {
+      state.bitGradientArmAxis = parseInt(bitGradientArmAxisSelect.value, 10) || 0;
+    });
+  }
+  const wireBitRadialFloat = (input, key) => {
+    if (!input) return;
+    input.addEventListener("input", () => {
+      state[key] = parseFloat(input.value);
+      updateLengthDisplays();
+    });
+  };
+  wireBitRadialFloat(bitGradientLinearSpanInput, "bitGradientLinearSpan");
+  wireBitRadialFloat(bitGradientRadialRadiusInput, "bitGradientRadialRadius");
+  wireBitRadialFloat(bitGradientRadialWidthInput, "bitGradientRadialWidth");
+  wireBitRadialFloat(bitGradientRadialHeightInput, "bitGradientRadialHeight");
+  wireBitRadialFloat(bitGradientRadialOffsetXInput, "bitGradientRadialOffsetX");
+  wireBitRadialFloat(bitGradientRadialOffsetYInput, "bitGradientRadialOffsetY");
+  if (bitGradientLasersInheritToggle) {
+    bitGradientLasersInheritToggle.addEventListener("click", () => {
+      state.bitGradientLasersInherit = !state.bitGradientLasersInherit;
+      syncBitGradientLasersInheritButton();
     });
   }
 
@@ -1761,6 +2103,27 @@ function initUI() {
   }
   if (gridSpacingZValue && gridSpacingZInput) {
     wireNumericValueField(gridSpacingZValue, gridSpacingZInput, "gridSpacingZ", false);
+  }
+  if (bitGradientScreenAngleValue && bitGradientScreenAngleInput) {
+    wireNumericValueField(bitGradientScreenAngleValue, bitGradientScreenAngleInput, "bitGradientScreenAngleDeg", false);
+  }
+  if (bitGradientLinearSpanValue && bitGradientLinearSpanInput) {
+    wireNumericValueField(bitGradientLinearSpanValue, bitGradientLinearSpanInput, "bitGradientLinearSpan", false);
+  }
+  if (bitGradientRadialRadiusValue && bitGradientRadialRadiusInput) {
+    wireNumericValueField(bitGradientRadialRadiusValue, bitGradientRadialRadiusInput, "bitGradientRadialRadius", false);
+  }
+  if (bitGradientRadialWidthValue && bitGradientRadialWidthInput) {
+    wireNumericValueField(bitGradientRadialWidthValue, bitGradientRadialWidthInput, "bitGradientRadialWidth", false);
+  }
+  if (bitGradientRadialHeightValue && bitGradientRadialHeightInput) {
+    wireNumericValueField(bitGradientRadialHeightValue, bitGradientRadialHeightInput, "bitGradientRadialHeight", false);
+  }
+  if (bitGradientRadialOffsetXValue && bitGradientRadialOffsetXInput) {
+    wireNumericValueField(bitGradientRadialOffsetXValue, bitGradientRadialOffsetXInput, "bitGradientRadialOffsetX", false);
+  }
+  if (bitGradientRadialOffsetYValue && bitGradientRadialOffsetYInput) {
+    wireNumericValueField(bitGradientRadialOffsetYValue, bitGradientRadialOffsetYInput, "bitGradientRadialOffsetY", false);
   }
 
   autoRotateToggle.addEventListener("click", () => {
@@ -2008,6 +2371,16 @@ function initUI() {
     updateRadial2Ui();
     syncBackgroundModeButtons();
     syncGradientTypeButtons();
+    if (bitGradientColorCountSelect) bitGradientColorCountSelect.value = String(state.bitGradientColorCount);
+    if (bitGradientArmAxisSelect) bitGradientArmAxisSelect.value = String(state.bitGradientArmAxis);
+    bitGradientColorInputs.forEach((el, i) => {
+      if (el) el.value = state.bitGradientColors[i];
+    });
+    syncBitModeButtons();
+    syncBitGradientTypeButtons();
+    syncBitGradientAlignButtons();
+    syncBitGradientLasersInheritButton();
+    updateBitGradientColorVisibility();
     updateBitColorVisuals();
     updateGuideMaterialVisuals();
     syncHexFieldsFromColorPickers();
@@ -2088,6 +2461,26 @@ function randomPalettePresetColor() {
   return PALETTE_PRESET_HEX[Math.floor(Math.random() * PALETTE_PRESET_HEX.length)].toLowerCase();
 }
 
+/** Reset bit-fill state to solid-white. Shared by Default / Auto so a switch back
+ *  always lands on a known-good baseline regardless of prior gradient tweaks. */
+function resetBitFillToSolidDefault() {
+  state.bitMode = "solid";
+  state.bitColorHex = "#ffffff";
+  state.bitGradientType = "linear";
+  state.bitGradientAlignMode = "screen";
+  state.bitGradientScreenAngleDeg = 135;
+  state.bitGradientArmAxis = 0;
+  state.bitGradientColorCount = 3;
+  state.bitGradientColors = [...DEFAULT_BIT_GRADIENT_COLORS];
+  state.bitGradientLinearSpan = 0.3;
+  state.bitGradientRadialRadius = 0.4;
+  state.bitGradientRadialWidth = 1;
+  state.bitGradientRadialHeight = 1;
+  state.bitGradientRadialOffsetX = 0;
+  state.bitGradientRadialOffsetY = 0;
+  state.bitGradientLasersInherit = true;
+}
+
 function applyShortcutDefault() {
   state.seed = 1;
   state.backgroundMode = "solid";
@@ -2111,6 +2504,7 @@ function applyShortcutDefault() {
   state.gradientColorCount = 3;
   state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
   state.bitColorHex = "#ffffff";
+  resetBitFillToSolidDefault();
   state.autoRotate = false;
   state.autoLength = false;
   state.showLaserGuides = false;
@@ -2159,6 +2553,7 @@ function applyShortcutAuto() {
   state.gradientColorCount = 3;
   state.gradientColors = [...DEFAULT_GRADIENT_COLORS];
   state.bitColorHex = "#ffffff";
+  resetBitFillToSolidDefault();
   state.autoRotate = true;
   state.autoLength = true;
   state.showLaserGuides = true;
@@ -2192,6 +2587,7 @@ function applyShortcutVibes() {
   state.autoLength = true;
   state.planeAngleLimitDeg = 8;
 
+  resetBitFillToSolidDefault();
   state.bitColorHex = "#1c1c1c";
   state.solidBackgroundColor = "#000000";
   state.backgroundMode = "gradient";
@@ -2240,6 +2636,25 @@ function applyShortcutRandomCore(pickColor = randomHexColor) {
   state.seed = Math.floor(Math.random() * 100000) + 1;
   applySeed(state.seed);
   state.bitColorHex = pickColor();
+  // 50/50 between solid bit and gradient bit. Gradient draws from the same pickColor pool.
+  if (Math.random() < 0.5) {
+    state.bitMode = "solid";
+  } else {
+    state.bitMode = "gradient";
+    state.bitGradientType = Math.random() < 0.5 ? "linear" : "radial";
+    state.bitGradientAlignMode = Math.random() < 0.5 ? "screen" : "arm";
+    state.bitGradientScreenAngleDeg = Math.floor(Math.random() * 360);
+    state.bitGradientArmAxis = Math.floor(Math.random() * 4);
+    state.bitGradientColorCount = 2 + Math.floor(Math.random() * 3); // 2..4
+    for (let i = 0; i < 4; i++) state.bitGradientColors[i] = pickColor();
+    state.bitGradientLinearSpan = 0.15 + Math.random() * 0.6;
+    state.bitGradientRadialRadius = 0.2 + Math.random() * 0.7;
+    state.bitGradientRadialWidth = 0.4 + Math.random() * 1.6;
+    state.bitGradientRadialHeight = 0.4 + Math.random() * 1.6;
+    state.bitGradientRadialOffsetX = (Math.random() - 0.5) * 0.6;
+    state.bitGradientRadialOffsetY = (Math.random() - 0.5) * 0.6;
+    state.bitGradientLasersInherit = Math.random() < 0.7;
+  }
   state.backgroundMode = Math.random() < 0.5 ? "solid" : "gradient";
   if (state.backgroundMode === "solid") {
     state.solidBackgroundColor = pickColor();
@@ -2407,6 +2822,81 @@ function buildSvgBackgroundLayer(size, half, camRight, camUp, rotMatrix) {
   return `<defs><linearGradient id="bgGradient" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops.join("")}</linearGradient></defs><rect width="${size}" height="${size}" fill="url(#bgGradient)"/>`;
 }
 
+/**
+ * SVG mirror of buildBitCanvasFillStyle: emits a linear/radial gradient def
+ * (using id "bitGradient") and returns { defs, fill } where fill is either
+ * a hex string (solid) or the `url(#bitGradient)` reference.
+ *
+ * `size` is the SVG square edge in px; `half` is size/2. Camera basis/rotation
+ * are passed so arm-aligned linear gradients can reuse the renderer's projection.
+ */
+function buildSvgBitGradient(size, half, camRight, camUp, rotMatrix) {
+  if (state.bitMode !== "gradient") {
+    return { defs: "", fill: state.bitColorHex };
+  }
+  const n = clampGradientColorCount(state.bitGradientColorCount);
+
+  if (state.bitGradientType === "radial") {
+    const halfDiag = half * Math.sqrt(2);
+    const base = Math.max(1, halfDiag * Math.max(0.02, Math.min(3, state.bitGradientRadialRadius)));
+    const rx = base * Math.max(0.05, Math.min(8, state.bitGradientRadialWidth));
+    const ry = base * Math.max(0.05, Math.min(8, state.bitGradientRadialHeight));
+    const oox = Math.max(-0.5, Math.min(0.5, state.bitGradientRadialOffsetX));
+    const ooy = Math.max(-0.5, Math.min(0.5, state.bitGradientRadialOffsetY));
+    const rcx = half + oox * size;
+    const rcy = half + ooy * size;
+    const xf = `translate(${rcx} ${rcy}) scale(${rx} ${ry})`;
+    let stops = "";
+    if (n === 1) {
+      const c = state.bitGradientColors[0];
+      stops = `<stop offset="0" stop-color="${c}" stop-opacity="1"/><stop offset="1" stop-color="${c}" stop-opacity="0"/>`;
+    } else {
+      for (let i = 0; i < n; i++) {
+        stops += `<stop offset="${i / (n - 1)}" stop-color="${state.bitGradientColors[i]}"/>`;
+      }
+    }
+    const def = `<radialGradient id="bitGradient" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="${xf}">${stops}</radialGradient>`;
+    return { defs: def, fill: "url(#bitGradient)" };
+  }
+
+  // Linear: pick direction in SVG canvas space.
+  let svgDirX = 1;
+  let svgDirY = 0;
+  if (state.bitGradientAlignMode === "arm") {
+    const axis = Math.max(0, Math.min(3, state.bitGradientArmAxis | 0));
+    const alignDir = axis === 3 ? getFourthArmLocalDir(fourthArmDirScratch) : ARM_LOCAL_DIRS[axis];
+    const worldDir = alignDir.clone().applyMatrix4(rotMatrix);
+    const gpx = worldDir.dot(camRight);
+    const gpy = worldDir.dot(camUp);
+    const gpf = Math.sqrt(gpx * gpx + gpy * gpy);
+    if (gpf > LASER_GUIDE_EPS) {
+      svgDirX = gpx / gpf;
+      svgDirY = -gpy / gpf;
+    }
+  } else {
+    const theta = (state.bitGradientScreenAngleDeg || 0) * DEG2RAD;
+    svgDirX = Math.cos(theta);
+    svgDirY = Math.sin(theta);
+  }
+  const spanFrac = Math.max(0.02, Math.min(2, state.bitGradientLinearSpan));
+  const L = half * Math.sqrt(2) * spanFrac;
+  const x1 = half - svgDirX * L;
+  const y1 = half - svgDirY * L;
+  const x2 = half + svgDirX * L;
+  const y2 = half + svgDirY * L;
+  let stops = "";
+  if (n === 1) {
+    const c = state.bitGradientColors[0];
+    stops = `<stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${c}"/>`;
+  } else {
+    for (let i = 0; i < n; i++) {
+      stops += `<stop offset="${i / (n - 1)}" stop-color="${state.bitGradientColors[i]}"/>`;
+    }
+  }
+  const def = `<linearGradient id="bitGradient" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" spreadMethod="pad">${stops}</linearGradient>`;
+  return { defs: def, fill: "url(#bitGradient)" };
+}
+
 function worldPointToSvg(P, camRight, camUp, half, pxPerUnit) {
   const x = P.dot(camRight);
   const y = P.dot(camUp);
@@ -2514,7 +3004,9 @@ function buildCurrentSvg() {
   const thicknessPx = state.thickness * zoom * pxPerUnit;
   const halfWidth = half;
   const halfHeight = half;
-  const bitFill = state.bitColorHex;
+  const bitGrad = buildSvgBitGradient(size, half, camRight, camUp, rotMatrix);
+  const bitFill = bitGrad.fill;
+  const laserFill = state.bitMode === "gradient" && state.bitGradientLasersInherit ? bitGrad.fill : state.bitColorHex;
 
   // Build projected arm data (screen direction + length) for fillet computation
   const projectedArms = [];
@@ -2547,7 +3039,7 @@ function buildCurrentSvg() {
       const y1 = half - svgDirY * guideHalfLenPx;
       const x2 = half + svgDirX * guideHalfLenPx;
       const y2 = half + svgDirY * guideHalfLenPx;
-      guidesSvg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${bitFill}" stroke-opacity="${state.laserGuideOpacity}" stroke-width="${guideStrokePx}" stroke-linecap="butt" />`;
+      guidesSvg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${laserFill}" stroke-opacity="${state.laserGuideOpacity}" stroke-width="${guideStrokePx}" stroke-linecap="butt" />`;
     }
   });
 
@@ -2626,7 +3118,8 @@ function buildCurrentSvg() {
     }
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">${bgLayer}${gridLayer}${guidesSvg}${armsSvg}${filletSvg}</svg>`;
+  const bitDefs = bitGrad.defs ? `<defs>${bitGrad.defs}</defs>` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">${bgLayer}${bitDefs}${gridLayer}${guidesSvg}${armsSvg}${filletSvg}</svg>`;
 }
 
 window.addEventListener("DOMContentLoaded", init);

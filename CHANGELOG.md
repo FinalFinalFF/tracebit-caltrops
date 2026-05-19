@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Bit gradient fill.** Bit color now has a Solid / Gradient toggle. Gradient mode supports linear (screen-angle or arm-aligned) and radial (size / oval width-height / offset) with 1–4 stops, drawn on the 2D overlay and clipped to the arm+fillet silhouette. Laser guides can inherit the gradient via a toggle (defaults on). SVG export emits a matching `<linearGradient>` / `<radialGradient>` def referenced by `fill="url(#bitGradient)"` on every arm and fillet path (and on laser strokes when inherit is on).
+
 ### Fixed
 
 - **SVG export now matches the rendered mark.** Replaced the subtractive fillet approach (background-colored circles punched at arm-edge intersections, which left visible dots on contrasting backgrounds) with the same additive arc-patch logic used by the canvas overlay — concave corners between CCW-adjacent half-arms get a bit-colored arc that bulges away from the corner. PNG and SVG output now agree.
