@@ -174,21 +174,27 @@
     .hint { font-size: 10px; color: #777; line-height: 1.4; }
     .color-control-wrap {
       display: flex;
-      flex-direction: column;
+      align-items: center;
       gap: 6px;
+      position: relative;
     }
+    /* Native color input is repurposed as the swatch button (left-aligned, 24px square). */
     .color-control-wrap input[type="color"] {
-      width: 100%;
-      height: 28px;
-      padding: 2px;
+      flex: 0 0 24px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
       border: 1px solid #333;
       border-radius: 2px;
       background: #111;
       cursor: pointer;
+      overflow: hidden;
     }
+    .color-control-wrap input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; border: 0; }
+    .color-control-wrap input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 1px; }
     .color-hex-input {
-      width: 100%;
-      box-sizing: border-box;
+      flex: 1 1 auto;
+      min-width: 0;
       padding: 4px 6px;
       font-size: 11px;
       font-variant-numeric: tabular-nums;
@@ -198,11 +204,37 @@
       color: #eee;
       border-radius: 2px;
     }
-    .color-preset-row {
-      display: flex;
+    .color-palette-btn {
+      flex: 0 0 24px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      font-size: 10px;
+      line-height: 1;
+      letter-spacing: 0;
+      border: 1px solid #333;
+      background: #111;
+      color: #aaa;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .color-palette-btn:hover { color: #fff; }
+    .color-palette-pop {
+      position: absolute;
+      z-index: 50;
+      top: 30px;
+      right: 0;
+      display: none;
       flex-wrap: wrap;
       gap: 4px;
+      padding: 6px;
+      width: 174px;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 3px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.6);
     }
+    .color-palette-pop[data-open="1"] { display: flex; }
     .color-preset-swatch {
       width: 22px;
       height: 22px;
@@ -479,11 +511,11 @@
       </details>
 
       <details class="panel-section">
-        <summary>Color &amp; background</summary>
+        <summary>Bit</summary>
         <div class="section-body">
           <div class="control-group">
             <div class="control-label-row">
-              <span>Bit fill</span>
+              <span>Fill</span>
             </div>
             <div class="button-row">
               <button id="bitModeSolid" type="button" class="primary">Solid</button>
@@ -623,10 +655,15 @@
               <p class="hint hint-tight">When on, laser guides take the same gradient as the bit. Turn off to keep lasers in the solid Bit color.</p>
             </div>
           </div>
-          <hr class="section-divider" />
+        </div>
+      </details>
+
+      <details class="panel-section">
+        <summary>Background</summary>
+        <div class="section-body">
           <div class="control-group">
             <div class="control-label-row">
-              <span>Background Mode</span>
+              <span>Mode</span>
             </div>
             <div class="button-row">
               <button id="backgroundModeSolid" type="button" class="primary">Solid</button>

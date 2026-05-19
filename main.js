@@ -1202,6 +1202,11 @@ function syncHexFieldsFromColorPickers() {
   });
 }
 
+/**
+ * Convert a native <input type="color"> into a compact one-row picker:
+ *   [ swatch (the input itself) ] [ hex field ] [ ▾ palette popover button ]
+ * Palette swatches live in a small popover anchored under the button.
+ */
 function mountColorPresetsAndHex(colorInput) {
   if (!colorInput || colorInput.dataset.colorEnhance === "1") return;
   colorInput.dataset.colorEnhance = "1";
@@ -1220,8 +1225,14 @@ function mountColorPresetsAndHex(colorInput) {
   hexInput.maxLength = 7;
   hexInput.value = colorInput.value;
 
-  const presetRow = document.createElement("div");
-  presetRow.className = "color-preset-row";
+  const paletteBtn = document.createElement("button");
+  paletteBtn.type = "button";
+  paletteBtn.className = "color-palette-btn";
+  paletteBtn.title = "Brand palette";
+  paletteBtn.textContent = "▾";
+
+  const pop = document.createElement("div");
+  pop.className = "color-palette-pop";
   PALETTE_PRESET_HEX.forEach((hex) => {
     const b = document.createElement("button");
     b.type = "button";
@@ -1235,12 +1246,28 @@ function mountColorPresetsAndHex(colorInput) {
       colorInput.value = v;
       hexInput.value = v;
       colorInput.dispatchEvent(new Event("input", { bubbles: true }));
+      pop.dataset.open = "0";
     });
-    presetRow.appendChild(b);
+    pop.appendChild(b);
   });
 
   wrap.appendChild(hexInput);
-  wrap.appendChild(presetRow);
+  wrap.appendChild(paletteBtn);
+  wrap.appendChild(pop);
+
+  paletteBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    // Close any other open popovers so we don't stack.
+    document.querySelectorAll('.color-palette-pop[data-open="1"]').forEach((el) => {
+      if (el !== pop) el.dataset.open = "0";
+    });
+    pop.dataset.open = pop.dataset.open === "1" ? "0" : "1";
+  });
+  // Dismiss on outside click.
+  document.addEventListener("click", (e) => {
+    if (pop.dataset.open !== "1") return;
+    if (!wrap.contains(e.target)) pop.dataset.open = "0";
+  });
 
   const syncHexFromPicker = () => {
     hexInput.value = colorInput.value;
