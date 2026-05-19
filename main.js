@@ -302,6 +302,7 @@ function init() {
 
   initUI();
   initAccordionPanels();
+  initClickableLabelRows();
   resizeBackgroundCanvas();
 
   animate();
@@ -1564,6 +1565,24 @@ function createGradientStopEditor(opts) {
   setStops(opts.initialColors, opts.initialOffsets, opts.initialCount || 1);
 
   return { element: root, setStops };
+}
+
+/**
+ * Make any `.control-label-row[data-toggle="<buttonId>"]` row clickable —
+ * a click anywhere on the row (except the button itself) is forwarded as a
+ * synthetic click on the target button. Lets users hit the entire row instead
+ * of the small inline toggle button.
+ */
+function initClickableLabelRows() {
+  document.querySelectorAll(".control-label-row.clickable[data-toggle]").forEach((row) => {
+    row.addEventListener("click", (e) => {
+      // If the click landed on the inline button itself, let its own handler run.
+      if (e.target.closest("button")) return;
+      const id = row.dataset.toggle;
+      const btn = id && document.getElementById(id);
+      if (btn) btn.click();
+    });
+  });
 }
 
 function initAccordionPanels() {

@@ -130,6 +130,20 @@
       line-height: 1.2;
       margin-left: auto;
     }
+    /* Rows with a togglable button — the whole row reads as a single hit target. */
+    .control-label-row.clickable {
+      cursor: pointer;
+      padding: 2px 6px;
+      margin: -2px -6px 2px;
+      border-radius: 2px;
+      transition: background-color 0.12s ease;
+    }
+    .control-label-row.clickable:hover {
+      background: #141414;
+    }
+    .control-label-row.clickable:hover button.inline {
+      border-color: #888;
+    }
     input[type="range"] {
       width: 100%;
       -webkit-appearance: none;
@@ -449,11 +463,15 @@
       text-transform: uppercase;
       letter-spacing: 0.14em;
       color: #888;
-      margin: 12px 0 6px;
+      margin: 22px 0 10px;
+      padding-top: 10px;
+      border-top: 1px solid #1a1a1a;
     }
     .section-body > .subsection-title:first-child,
     .control-group > .subsection-title:first-child {
-      margin-top: 0;
+      margin-top: 4px;
+      padding-top: 0;
+      border-top: none;
     }
     .control-label-row.row-mt {
       margin-top: 8px;
@@ -541,7 +559,7 @@
             <input id="lenZ" type="range" min="0.2" max="2.0" step="0.01" value="1.30" />
           </div>
           <div class="control-group">
-            <div class="control-label-row">
+            <div class="control-label-row clickable" data-toggle="fourthArmToggle">
               <span>Fourth arm</span>
               <button id="fourthArmToggle" type="button" class="inline">Off</button>
             </div>
@@ -571,13 +589,13 @@
             </div>
           </div>
           <div class="control-group">
-            <div class="control-label-row">
+            <div class="control-label-row clickable" data-toggle="resetArmLengths">
               <span>Arm lengths</span>
               <button id="resetArmLengths" type="button" class="inline">Reset</button>
             </div>
           </div>
           <div class="control-group">
-            <div class="control-label-row">
+            <div class="control-label-row clickable" data-toggle="autoLengthToggle">
               <span>Auto Length</span>
               <button id="autoLengthToggle" type="button" class="inline">On</button>
             </div>
@@ -611,7 +629,7 @@
         <summary>Pose</summary>
         <div class="section-body">
           <div class="control-group">
-            <div class="control-label-row">
+            <div class="control-label-row clickable" data-toggle="autoRotateToggle">
               <span>Auto Rotate</span>
               <button id="autoRotateToggle" type="button" class="inline">On</button>
             </div>
@@ -654,7 +672,7 @@
           </div>
           <p class="hint hint-tight">Local Euler rotation (Y-up, order XYZ). Note the three angles (and seed) to recreate a pose. Sliders are disabled while Auto Rotate is on.</p>
           <div class="control-group">
-            <div class="control-label-row">
+            <div class="control-label-row clickable" data-toggle="poseReset">
               <span>Pose</span>
               <button id="poseReset" type="button" class="inline">Reset</button>
             </div>
@@ -801,7 +819,7 @@
               <input id="bitGradientRadialOffsetY" type="range" min="-0.5" max="0.5" step="0.005" value="0" />
             </div>
             <div class="control-group">
-              <div class="control-label-row row-mt">
+              <div class="control-label-row row-mt clickable" data-toggle="bitGradientLasersInheritToggle">
                 <span>Lasers inherit gradient</span>
                 <button id="bitGradientLasersInheritToggle" type="button" class="primary inline">On</button>
               </div>
@@ -930,7 +948,7 @@
               </div>
               <input id="gradientRadialOffsetY" type="range" min="-0.5" max="0.5" step="0.005" value="0" />
               <p class="hint hint-tight">The canvas color fills first; with 1 color stop, the radial fades from Color 1 to this canvas color. Size follows the view diagonal; width/height scale the oval (1 = circle). Offsets are a fraction of canvas width/height.</p>
-              <div class="control-label-row row-mt">
+              <div class="control-label-row row-mt clickable" data-toggle="gradientRadial2Toggle">
                 <span>Second radial</span>
                 <button type="button" id="gradientRadial2Toggle" class="inline">Off</button>
               </div>
@@ -998,7 +1016,7 @@
         <div class="section-body">
           <div class="subsection-title">Laser guides</div>
           <div class="control-group">
-            <div class="control-label-row">
+            <div class="control-label-row clickable" data-toggle="laserGuidesToggle">
               <span>Show lasers</span>
               <button id="laserGuidesToggle" type="button" class="inline">On</button>
             </div>
@@ -1020,7 +1038,7 @@
           <hr class="section-divider" />
           <div class="subsection-title">Plane grid</div>
           <div class="control-group">
-            <div class="control-label-row">
+            <div class="control-label-row clickable" data-toggle="gridLinesToggle">
               <span>Show grid</span>
               <button id="gridLinesToggle" type="button" class="inline">Off</button>
             </div>
