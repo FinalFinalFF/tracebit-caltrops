@@ -1656,27 +1656,7 @@ function initUI() {
   const bitGradientArmAxisSelect = document.getElementById("bitGradientArmAxis");
   const bitGradientLinearSpanInput = document.getElementById("bitGradientLinearSpan");
   const bitGradientLinearSpanValue = document.getElementById("bitGradientLinearSpan-value");
-  const bitGradientColorCountSelect = document.getElementById("bitGradientColorCount");
-  const bitGradientColorInputs = [
-    document.getElementById("bitGradientColor0"),
-    document.getElementById("bitGradientColor1"),
-    document.getElementById("bitGradientColor2"),
-    document.getElementById("bitGradientColor3"),
-    document.getElementById("bitGradientColor4"),
-    document.getElementById("bitGradientColor5"),
-    document.getElementById("bitGradientColor6"),
-    document.getElementById("bitGradientColor7"),
-  ];
-  const bitGradientColorWraps = [
-    null,
-    document.getElementById("bitGradientColor1-wrap"),
-    document.getElementById("bitGradientColor2-wrap"),
-    document.getElementById("bitGradientColor3-wrap"),
-    document.getElementById("bitGradientColor4-wrap"),
-    document.getElementById("bitGradientColor5-wrap"),
-    document.getElementById("bitGradientColor6-wrap"),
-    document.getElementById("bitGradientColor7-wrap"),
-  ];
+  const bitGradientStopEditorHost = document.getElementById("bitGradientStopEditor");
   const bitGradientRadialRadiusInput = document.getElementById("bitGradientRadialRadius");
   const bitGradientRadialRadiusValue = document.getElementById("bitGradientRadialRadius-value");
   const bitGradientRadialWidthInput = document.getElementById("bitGradientRadialWidth");
@@ -1705,27 +1685,7 @@ function initUI() {
   const gradientBackgroundControls = document.getElementById("gradientBackgroundControls");
   const solidBackgroundColorInput = document.getElementById("solidBackgroundColor");
   const gradientAlignAxisSelect = document.getElementById("gradientAlignAxis");
-  const gradientColorCountSelect = document.getElementById("gradientColorCount");
-  const gradientColorInputs = [
-    document.getElementById("gradientColor0"),
-    document.getElementById("gradientColor1"),
-    document.getElementById("gradientColor2"),
-    document.getElementById("gradientColor3"),
-    document.getElementById("gradientColor4"),
-    document.getElementById("gradientColor5"),
-    document.getElementById("gradientColor6"),
-    document.getElementById("gradientColor7"),
-  ];
-  const gradientColorWraps = [
-    null, // Color 1 has no wrap (always visible)
-    document.getElementById("gradientColor1-wrap"),
-    document.getElementById("gradientColor2-wrap"),
-    document.getElementById("gradientColor3-wrap"),
-    document.getElementById("gradientColor4-wrap"),
-    document.getElementById("gradientColor5-wrap"),
-    document.getElementById("gradientColor6-wrap"),
-    document.getElementById("gradientColor7-wrap"),
-  ];
+  const backgroundGradientStopEditorHost = document.getElementById("backgroundGradientStopEditor");
   const gradientTypeLinearBtn = document.getElementById("gradientTypeLinear");
   const gradientTypeRadialBtn = document.getElementById("gradientTypeRadial");
   const gradientLinearControls = document.getElementById("gradientLinearControls");
@@ -1807,9 +1767,7 @@ function initUI() {
     bitColorInput,
     solidBackgroundColorInput,
     gradientRadialCanvasBackgroundInput,
-    ...gradientColorInputs,
     ...gradientRadial2ColorInputs,
-    ...bitGradientColorInputs,
   ].forEach((el) => {
     mountColorPresetsAndHex(el);
   });
@@ -2060,14 +2018,6 @@ function initUI() {
     if (!solid) syncGradientTypeButtons();
   }
 
-  function updateGradientColorVisibility() {
-    const n = state.gradientColorCount;
-    for (let i = 1; i < gradientColorWraps.length; i++) {
-      const w = gradientColorWraps[i];
-      if (w) w.style.display = n >= i + 1 ? "block" : "none";
-    }
-  }
-
   function updateRadial2GradientColorVisibility() {
     const n = state.gradientRadial2ColorCount;
     if (gradientRadial2Color1Wrap) gradientRadial2Color1Wrap.style.display = n >= 2 ? "block" : "none";
@@ -2085,26 +2035,6 @@ function initUI() {
       gradientRadial2DetailControls.style.display = showDetails ? "block" : "none";
     }
     updateRadial2GradientColorVisibility();
-  }
-
-  function readGradientColorsFromInputs() {
-    gradientColorInputs.forEach((el, i) => {
-      if (el) state.gradientColors[i] = el.value;
-    });
-  }
-
-  function readBitGradientColorsFromInputs() {
-    bitGradientColorInputs.forEach((el, i) => {
-      if (el) state.bitGradientColors[i] = el.value;
-    });
-  }
-
-  function updateBitGradientColorVisibility() {
-    const n = state.bitGradientColorCount;
-    for (let i = 1; i < bitGradientColorWraps.length; i++) {
-      const w = bitGradientColorWraps[i];
-      if (w) w.style.display = n >= i + 1 ? "block" : "none";
-    }
   }
 
   function syncBitModeButtons() {
@@ -2154,10 +2084,42 @@ function initUI() {
     if (el) el.value = state.gradientRadial2Colors[i];
   });
   gradientAlignAxisSelect.value = String(state.gradientAlignAxis);
-  gradientColorCountSelect.value = String(state.gradientColorCount);
-  gradientColorInputs.forEach((el, i) => {
-    if (el) el.value = state.gradientColors[i];
+
+  // Create the unified gradient stop editors for the bit and the background.
+  const bitGradientStopEditor = createGradientStopEditor({
+    initialColors: state.bitGradientColors,
+    initialOffsets: state.bitGradientStopOffsets,
+    initialCount: state.bitGradientColorCount,
+    onChange: ({ colors, offsets, count }) => {
+      for (let i = 0; i < GRADIENT_MAX_STOPS; i++) {
+        state.bitGradientColors[i] = colors[i] || "#000000";
+      }
+      state.bitGradientColorCount = count;
+      // Detect "even spacing"; if so, keep stopOffsets null so future count
+      // changes don't drag old offsets along.
+      const ev = effectiveStopOffsets(null, count);
+      const isEven = offsets.slice(0, count).every((o, i) => Math.abs(o - ev[i]) < 1e-4);
+      state.bitGradientStopOffsets = isEven ? null : offsets.slice(0, count);
+    },
   });
+  if (bitGradientStopEditorHost) bitGradientStopEditorHost.appendChild(bitGradientStopEditor.element);
+
+  const backgroundGradientStopEditor = createGradientStopEditor({
+    initialColors: state.gradientColors,
+    initialOffsets: state.gradientStopOffsets,
+    initialCount: state.gradientColorCount,
+    onChange: ({ colors, offsets, count }) => {
+      for (let i = 0; i < GRADIENT_MAX_STOPS; i++) {
+        state.gradientColors[i] = colors[i] || "#000000";
+      }
+      state.gradientColorCount = count;
+      const ev = effectiveStopOffsets(null, count);
+      const isEven = offsets.slice(0, count).every((o, i) => Math.abs(o - ev[i]) < 1e-4);
+      state.gradientStopOffsets = isEven ? null : offsets.slice(0, count);
+    },
+  });
+  if (backgroundGradientStopEditorHost) backgroundGradientStopEditorHost.appendChild(backgroundGradientStopEditor.element);
+
   syncSliders();
   syncHexFieldsFromColorPickers();
   syncGradientTypeButtons();
@@ -2242,12 +2204,6 @@ function initUI() {
   gradientAlignAxisSelect.addEventListener("change", () => {
     state.gradientAlignAxis = parseInt(gradientAlignAxisSelect.value, 10) || 0;
   });
-  gradientColorCountSelect.addEventListener("change", () => {
-    const v = parseInt(gradientColorCountSelect.value, 10);
-    state.gradientColorCount = v >= 1 && v <= GRADIENT_MAX_STOPS ? v : 3;
-    state.gradientStopOffsets = null; // resize ⇒ revert to even spacing
-    updateGradientColorVisibility();
-  });
   if (gradientRadialCanvasBackgroundInput) {
     gradientRadialCanvasBackgroundInput.addEventListener("input", () => {
       state.gradientRadialCanvasBackground = gradientRadialCanvasBackgroundInput.value;
@@ -2265,13 +2221,8 @@ function initUI() {
     if (!el) return;
     el.addEventListener("input", readRadial2GradientColorsFromInputs);
   });
-  gradientColorInputs.forEach((el) => {
-    if (!el) return;
-    el.addEventListener("input", readGradientColorsFromInputs);
-  });
 
   syncBackgroundModeButtons();
-  updateGradientColorVisibility();
 
   if (bitColorInput) {
     bitColorInput.value = state.bitColorHex;
@@ -2282,20 +2233,6 @@ function initUI() {
   }
 
   // Bit fill mode & gradient wiring
-  bitGradientColorInputs.forEach((el, i) => {
-    if (!el) return;
-    el.value = state.bitGradientColors[i];
-    el.addEventListener("input", readBitGradientColorsFromInputs);
-  });
-  if (bitGradientColorCountSelect) {
-    bitGradientColorCountSelect.value = String(state.bitGradientColorCount);
-    bitGradientColorCountSelect.addEventListener("change", () => {
-      const v = parseInt(bitGradientColorCountSelect.value, 10);
-      state.bitGradientColorCount = v >= 1 && v <= GRADIENT_MAX_STOPS ? v : 3;
-      state.bitGradientStopOffsets = null;
-      updateBitGradientColorVisibility();
-    });
-  }
   if (bitModeSolidBtn) {
     bitModeSolidBtn.addEventListener("click", () => {
       state.bitMode = "solid";
@@ -2770,24 +2707,20 @@ function initUI() {
       if (el) el.value = state.gradientRadial2Colors[i];
     });
     gradientAlignAxisSelect.value = String(state.gradientAlignAxis);
-    gradientColorCountSelect.value = String(state.gradientColorCount);
-    gradientColorInputs.forEach((el, i) => {
-      if (el) el.value = state.gradientColors[i];
-    });
-    updateGradientColorVisibility();
+    if (backgroundGradientStopEditor) {
+      backgroundGradientStopEditor.setStops(state.gradientColors, state.gradientStopOffsets, state.gradientColorCount);
+    }
     updateRadial2Ui();
     syncBackgroundModeButtons();
     syncGradientTypeButtons();
-    if (bitGradientColorCountSelect) bitGradientColorCountSelect.value = String(state.bitGradientColorCount);
     if (bitGradientArmAxisSelect) bitGradientArmAxisSelect.value = String(state.bitGradientArmAxis);
-    bitGradientColorInputs.forEach((el, i) => {
-      if (el) el.value = state.bitGradientColors[i];
-    });
+    if (bitGradientStopEditor) {
+      bitGradientStopEditor.setStops(state.bitGradientColors, state.bitGradientStopOffsets, state.bitGradientColorCount);
+    }
     syncBitModeButtons();
     syncBitGradientTypeButtons();
     syncBitGradientAlignButtons();
     syncBitGradientLasersInheritButton();
-    updateBitGradientColorVisibility();
     updateBitColorVisuals();
     updateGuideMaterialVisuals();
     syncHexFieldsFromColorPickers();

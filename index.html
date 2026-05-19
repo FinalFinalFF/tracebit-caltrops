@@ -560,12 +560,11 @@
           </div>
           <div class="control-group">
             <div class="control-label-row clickable" data-toggle="fourthArmToggle">
-              <span>Fourth arm</span>
+              <span>Fourth arm<span class="tip" data-tip="Optional extra stroke in local space; same rigid rotation as X/Y/Z. Angles use Y-up: azimuth in the horizontal XZ plane (0° = +Z), elevation toward +Y." tabindex="0"></span></span>
               <button id="fourthArmToggle" type="button" class="inline">Off</button>
             </div>
           </div>
           <div id="fourthArmDetailControls" style="display: none;">
-            <p class="hint hint-spaced">Optional extra stroke in local space; same rigid rotation as X/Y/Z. Angles use Y-up: azimuth in the horizontal XZ plane (0° = +Z), elevation toward +Y.</p>
             <div class="control-group">
               <div class="control-label-row">
                 <span>Fourth azimuth (°)</span>
@@ -643,11 +642,10 @@
           </div>
           <div class="control-group">
             <div class="control-label-row">
-              <span>Plane Angle Min (°)</span>
+              <span>Plane Angle Min (°)<span class="tip" data-tip="Dampens the X/Y tumble during Auto Rotate. 0° = full 3-axis tumble; ~35° = pure Z-spin." tabindex="0"></span></span>
               <input type="number" class="value value-num" id="planeAngleLimit-value" inputmode="decimal" />
             </div>
             <input id="planeAngleLimit" type="range" min="0" max="45" step="1" value="0" />
-            <p class="hint hint-after-control">Dampens the X/Y tumble during Auto Rotate. 0° = full 3-axis tumble; ~35° = pure Z-spin.</p>
           </div>
           <div class="control-group">
             <div class="control-label-row">
@@ -670,13 +668,11 @@
             </div>
             <input id="poseRotZ" type="range" min="-180" max="180" step="0.1" value="0" />
           </div>
-          <p class="hint hint-tight">Local Euler rotation (Y-up, order XYZ). Note the three angles (and seed) to recreate a pose. Sliders are disabled while Auto Rotate is on.</p>
           <div class="control-group">
             <div class="control-label-row clickable" data-toggle="poseReset">
-              <span>Pose</span>
+              <span>Pose<span class="tip" data-tip="Local Euler rotation (Y-up, order XYZ). Note the three angles (and seed) to recreate a pose. Reset returns to the default pose and camera, and turns off Auto Rotate." tabindex="0"></span></span>
               <button id="poseReset" type="button" class="inline">Reset</button>
             </div>
-            <p class="hint hint-after-control">Zero rotation, default camera, and turns off Auto Rotate.</p>
           </div>
         </div>
       </details>
@@ -709,53 +705,7 @@
                 <button id="bitGradientTypeRadial" type="button">Radial</button>
               </div>
             </div>
-            <div class="control-group">
-              <div class="control-label-row">
-                <span>Color stops</span>
-              </div>
-              <select id="bitGradientColorCount" class="bg-select">
-                <option value="1">1 color</option>
-                <option value="2">2 colors</option>
-                <option value="3" selected>3 colors</option>
-                <option value="4">4 colors</option>
-                <option value="5">5 colors</option>
-                <option value="6">6 colors</option>
-                <option value="7">7 colors</option>
-                <option value="8">8 colors</option>
-              </select>
-            </div>
-            <div class="control-group">
-              <div class="control-label-row"><span>Color 1</span></div>
-              <input id="bitGradientColor0" type="color" value="#c91f5e" />
-            </div>
-            <div class="control-group" id="bitGradientColor1-wrap">
-              <div class="control-label-row"><span>Color 2</span></div>
-              <input id="bitGradientColor1" type="color" value="#ff8a3c" />
-            </div>
-            <div class="control-group" id="bitGradientColor2-wrap">
-              <div class="control-label-row"><span>Color 3</span></div>
-              <input id="bitGradientColor2" type="color" value="#f5e6e8" />
-            </div>
-            <div class="control-group" id="bitGradientColor3-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 4</span></div>
-              <input id="bitGradientColor3" type="color" value="#a8c0b0" />
-            </div>
-            <div class="control-group" id="bitGradientColor4-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 5</span></div>
-              <input id="bitGradientColor4" type="color" value="#231F20" />
-            </div>
-            <div class="control-group" id="bitGradientColor5-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 6</span></div>
-              <input id="bitGradientColor5" type="color" value="#231F20" />
-            </div>
-            <div class="control-group" id="bitGradientColor6-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 7</span></div>
-              <input id="bitGradientColor6" type="color" value="#231F20" />
-            </div>
-            <div class="control-group" id="bitGradientColor7-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 8</span></div>
-              <input id="bitGradientColor7" type="color" value="#231F20" />
-            </div>
+            <div id="bitGradientStopEditor" class="control-group"></div>
             <div id="bitGradientLinearControls" class="control-group">
               <div class="subsection-title">Linear</div>
               <div class="control-label-row">
@@ -784,11 +734,10 @@
                 </select>
               </div>
               <div class="control-label-row row-mt">
-                <span>Span</span>
+                <span>Span<span class="tip" data-tip="Fraction of the canvas diagonal the gradient spans. Lower values compress the full stop range into the bit's footprint." tabindex="0"></span></span>
                 <input type="number" class="value value-num" id="bitGradientLinearSpan-value" inputmode="decimal" />
               </div>
               <input id="bitGradientLinearSpan" type="range" min="0.02" max="2" step="0.01" value="0.3" />
-              <p class="hint hint-tight">Fraction of the canvas diagonal the gradient spans. Lower values compress the full stop range into the bit's footprint.</p>
             </div>
             <div id="bitGradientRadialControls" class="control-group" style="display: none;">
               <div class="subsection-title">Radial</div>
@@ -820,10 +769,9 @@
             </div>
             <div class="control-group">
               <div class="control-label-row row-mt clickable" data-toggle="bitGradientLasersInheritToggle">
-                <span>Lasers inherit gradient</span>
+                <span>Lasers inherit gradient<span class="tip" data-tip="When on, laser guides take the same gradient as the bit. Turn off to keep lasers in the solid Bit color." tabindex="0"></span></span>
                 <button id="bitGradientLasersInheritToggle" type="button" class="primary inline">On</button>
               </div>
-              <p class="hint hint-tight">When on, laser guides take the same gradient as the bit. Turn off to keep lasers in the solid Bit color.</p>
             </div>
           </div>
         </div>
@@ -857,53 +805,7 @@
                 <button id="gradientTypeRadial" type="button">Radial</button>
               </div>
             </div>
-            <div class="control-group">
-              <div class="control-label-row">
-                <span>Color stops</span>
-              </div>
-              <select id="gradientColorCount" class="bg-select">
-                <option value="1">1 color</option>
-                <option value="2">2 colors</option>
-                <option value="3" selected>3 colors</option>
-                <option value="4">4 colors</option>
-                <option value="5">5 colors</option>
-                <option value="6">6 colors</option>
-                <option value="7">7 colors</option>
-                <option value="8">8 colors</option>
-              </select>
-            </div>
-            <div class="control-group">
-              <div class="control-label-row"><span>Color 1</span></div>
-              <input id="gradientColor0" type="color" value="#8a9a8e" />
-            </div>
-            <div class="control-group" id="gradientColor1-wrap">
-              <div class="control-label-row"><span>Color 2</span></div>
-              <input id="gradientColor1" type="color" value="#f5e6e8" />
-            </div>
-            <div class="control-group" id="gradientColor2-wrap">
-              <div class="control-label-row"><span>Color 3</span></div>
-              <input id="gradientColor2" type="color" value="#c45c3e" />
-            </div>
-            <div class="control-group" id="gradientColor3-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 4</span></div>
-              <input id="gradientColor3" type="color" value="#2a1810" />
-            </div>
-            <div class="control-group" id="gradientColor4-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 5</span></div>
-              <input id="gradientColor4" type="color" value="#231F20" />
-            </div>
-            <div class="control-group" id="gradientColor5-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 6</span></div>
-              <input id="gradientColor5" type="color" value="#231F20" />
-            </div>
-            <div class="control-group" id="gradientColor6-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 7</span></div>
-              <input id="gradientColor6" type="color" value="#231F20" />
-            </div>
-            <div class="control-group" id="gradientColor7-wrap" style="display: none;">
-              <div class="control-label-row"><span>Color 8</span></div>
-              <input id="gradientColor7" type="color" value="#231F20" />
-            </div>
+            <div id="backgroundGradientStopEditor" class="control-group"></div>
             <div id="gradientLinearControls" class="control-group">
               <div class="subsection-title">Linear</div>
               <div class="control-label-row">
@@ -947,9 +849,8 @@
                 <input type="number" class="value value-num" id="gradientRadialOffsetY-value" inputmode="decimal" />
               </div>
               <input id="gradientRadialOffsetY" type="range" min="-0.5" max="0.5" step="0.005" value="0" />
-              <p class="hint hint-tight">The canvas color fills first; with 1 color stop, the radial fades from Color 1 to this canvas color. Size follows the view diagonal; width/height scale the oval (1 = circle). Offsets are a fraction of canvas width/height.</p>
               <div class="control-label-row row-mt clickable" data-toggle="gradientRadial2Toggle">
-                <span>Second radial</span>
+                <span>Second radial<span class="tip" data-tip="Drawn on top of the first radial (same math). With 1 color stop, the edge fades to transparent so the layer below shows through. Use to add a highlight or secondary glow." tabindex="0"></span></span>
                 <button type="button" id="gradientRadial2Toggle" class="inline">Off</button>
               </div>
               <div id="gradientRadial2DetailControls" class="control-group detail-nested" style="display: none;">
@@ -1001,13 +902,9 @@
                   <div class="control-label-row"><span>Color 4</span></div>
                   <input id="gradientRadial2Color3" type="color" value="#000000" />
                 </div>
-                <p class="hint hint-spaced">Drawn on top of the first radial (same math). With 1 color stop, the edge fades to transparent so the layer below shows through.</p>
               </div>
             </div>
           </div>
-          <p class="hint hint-spaced">
-            Linear gradients follow the projected axis in the view. With 1 color stop, linear is a solid fill; radial uses Color 1 fading to the canvas color. In radial mode you can stack a second radial on top. PNG export includes the background.
-          </p>
         </div>
       </details>
 
@@ -1039,12 +936,11 @@
           <div class="subsection-title">Plane grid</div>
           <div class="control-group">
             <div class="control-label-row clickable" data-toggle="gridLinesToggle">
-              <span>Show grid</span>
+              <span>Show grid<span class="tip" data-tip="Parallel to X: grid in the XY plane (±Y). Parallel to Y: XY (±X). Parallel to Z: XZ (±X). Count is lines per side of the origin; spacing in scene units. With laser guides off, the three axis lines are drawn as part of the grid." tabindex="0"></span></span>
               <button id="gridLinesToggle" type="button" class="inline">Off</button>
             </div>
           </div>
           <div id="planeGridDetailControls" style="display: none;">
-            <p class="hint hint-spaced">Parallel to X: grid in the XY plane (±Y). Parallel to Y: XY (±X). Parallel to Z: XZ (±X). Count is lines per side of the origin; spacing in scene units. With laser guides off, the three axis lines are drawn as part of the grid.</p>
             <div class="control-group">
               <div class="control-label-row">
                 <span>Parallel to X — lines / side</span>
