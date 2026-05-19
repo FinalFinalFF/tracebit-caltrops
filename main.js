@@ -303,6 +303,7 @@ function init() {
   initUI();
   initAccordionPanels();
   initClickableLabelRows();
+  initSidebarResizer();
   resizeBackgroundCanvas();
 
   animate();
@@ -1582,6 +1583,78 @@ function initClickableLabelRows() {
       const btn = id && document.getElementById(id);
       if (btn) btn.click();
     });
+  });
+}
+
+/**
+ * Drag-to-resize on the left edge of the sidebar (#sidebar-resizer), a collapse
+ * toggle (#sidebar-collapse-toggle), and localStorage persistence for both.
+ * Min width is 280px (the original layout width); upper bound is half the window.
+ */
+function initSidebarResizer() {
+  const sidebar = document.getElementById("controls");
+  const handle = document.getElementById("sidebar-resizer");
+  const toggle = document.getElementById("sidebar-collapse-toggle");
+  if (!sidebar || !handle || !toggle) return;
+
+  const STORAGE_W = "tracebit:sidebarWidth";
+  const STORAGE_C = "tracebit:sidebarCollapsed";
+  const MIN = 280;
+
+  // Restore persisted width / collapsed state.
+  const savedW = parseInt(localStorage.getItem(STORAGE_W) || "", 10);
+  if (Number.isFinite(savedW) && savedW >= MIN) {
+    sidebar.style.width = savedW + "px";
+  }
+  if (localStorage.getItem(STORAGE_C) === "1") {
+    document.body.classList.add("sidebar-collapsed");
+    toggle.textContent = "‹";
+    toggle.title = "Show sidebar";
+  }
+
+  // Drag to resize.
+  let dragStartX = 0;
+  let dragStartW = 0;
+  let dragging = false;
+  const onMove = (e) => {
+    if (!dragging) return;
+    // The sidebar grows when the cursor moves LEFT (handle is on the left edge of the sidebar).
+    const delta = dragStartX - e.clientX;
+    const maxW = Math.max(MIN, Math.floor(window.innerWidth * 0.6));
+    const w = Math.max(MIN, Math.min(maxW, dragStartW + delta));
+    sidebar.style.width = w + "px";
+    onWindowResize();
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove("dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    localStorage.setItem(STORAGE_W, String(sidebar.getBoundingClientRect().width | 0));
+  };
+  handle.addEventListener("mousedown", (e) => {
+    dragging = true;
+    dragStartX = e.clientX;
+    dragStartW = sidebar.getBoundingClientRect().width;
+    handle.classList.add("dragging");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    e.preventDefault();
+  });
+
+  // Collapse / restore.
+  toggle.addEventListener("click", () => {
+    const wasCollapsed = document.body.classList.toggle("sidebar-collapsed");
+    toggle.textContent = wasCollapsed ? "‹" : "›";
+    toggle.title = wasCollapsed ? "Show sidebar" : "Hide sidebar";
+    localStorage.setItem(STORAGE_C, wasCollapsed ? "1" : "0");
+    // Canvas must re-fit to the new available width.
+    onWindowResize();
   });
 }
 

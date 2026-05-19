@@ -20,6 +20,7 @@
     #canvas-container canvas { display: block; }
     #controls {
       width: 280px;
+      min-width: 280px;
       height: 100vh;
       overflow-y: auto;
       overscroll-behavior: contain;
@@ -29,6 +30,47 @@
       display: flex;
       flex-direction: column;
       gap: 0;
+      flex-shrink: 0;
+      position: relative;
+    }
+    /* Drag-handle on the left edge of the sidebar to resize wider. */
+    #sidebar-resizer {
+      flex: 0 0 5px;
+      width: 5px;
+      cursor: col-resize;
+      background: transparent;
+      border-left: 1px solid #1a1a1a;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    #sidebar-resizer:hover,
+    #sidebar-resizer.dragging {
+      background: #EA6F53;
+      border-left-color: #EA6F53;
+    }
+    /* Collapse toggle button — pinned to the top-right of the canvas when sidebar is visible,
+       and floats over the canvas at top-right when sidebar is collapsed. */
+    #sidebar-collapse-toggle {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      font-size: 14px;
+      line-height: 1;
+      letter-spacing: 0;
+      border: 1px solid #333;
+      background: rgba(8, 8, 8, 0.7);
+      color: #aaa;
+      border-radius: 3px;
+      cursor: pointer;
+      z-index: 10;
+      backdrop-filter: blur(6px);
+    }
+    #sidebar-collapse-toggle:hover { color: #fff; border-color: #EA6F53; }
+    body.sidebar-collapsed #controls,
+    body.sidebar-collapsed #sidebar-resizer {
+      display: none;
     }
     h1 { font-size: 16px; margin-bottom: 4px; letter-spacing: 0.08em; text-transform: uppercase; }
     .subhead { font-size: 11px; color: #aaa; line-height: 1.4; }
@@ -458,6 +500,35 @@
       padding-left: 4px;
       padding-right: 4px;
     }
+    details.exploration-presets {
+      margin-top: 10px;
+      border-top: 1px solid #1a1a1a;
+      padding-top: 8px;
+    }
+    details.exploration-presets > summary {
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: #888;
+      padding-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    details.exploration-presets > summary::-webkit-details-marker { display: none; }
+    details.exploration-presets > summary::after {
+      content: "▾";
+      font-size: 9px;
+      opacity: 0.55;
+      transition: transform 0.12s ease;
+    }
+    details.exploration-presets:not([open]) > summary::after {
+      transform: rotate(-90deg);
+    }
+    details.exploration-presets > summary:hover { color: #ccc; }
     .subsection-title {
       font-size: 10px;
       text-transform: uppercase;
@@ -467,8 +538,7 @@
       padding-top: 10px;
       border-top: 1px solid #1a1a1a;
     }
-    .section-body > .subsection-title:first-child,
-    .control-group > .subsection-title:first-child {
+    .section-body > .subsection-title:first-child {
       margin-top: 4px;
       padding-top: 0;
       border-top: none;
@@ -495,7 +565,10 @@
 </head>
 <body>
   <div id="app">
-    <div id="canvas-container"></div>
+    <div id="canvas-container">
+      <button id="sidebar-collapse-toggle" type="button" title="Hide sidebar">›</button>
+    </div>
+    <div id="sidebar-resizer" title="Drag to resize"></div>
     <div id="controls">
       <div class="intro-block">
         <h1>Tracebit Caltrops</h1>
@@ -519,18 +592,20 @@
             <button type="button" id="shortcutMotion">Motion</button>
           </div>
         </div>
-        <div class="panel-export-title" style="margin-top: 10px;">Exploration</div>
-        <div class="shortcut-button-rows">
-          <div class="button-row">
-            <button type="button" id="shortcutDefault">Default</button>
-            <button type="button" id="shortcutAuto">Auto</button>
-            <button type="button" id="shortcutVibes">Vibes</button>
+        <details class="exploration-presets">
+          <summary>More presets</summary>
+          <div class="shortcut-button-rows">
+            <div class="button-row">
+              <button type="button" id="shortcutDefault">Default</button>
+              <button type="button" id="shortcutAuto">Auto</button>
+              <button type="button" id="shortcutVibes">Vibes</button>
+            </div>
+            <div class="button-row">
+              <button type="button" id="shortcutRandom">Random</button>
+              <button type="button" id="shortcutFullRandom">Full Random</button>
+            </div>
           </div>
-          <div class="button-row">
-            <button type="button" id="shortcutRandom">Random</button>
-            <button type="button" id="shortcutFullRandom">Full Random</button>
-          </div>
-        </div>
+        </details>
       </div>
 
       <details class="panel-section" open>
@@ -932,7 +1007,6 @@
             </div>
             <input id="laserGuideOpacity" type="range" min="0.1" max="1.0" step="0.01" value="0.95" />
           </div>
-          <hr class="section-divider" />
           <div class="subsection-title">Plane grid</div>
           <div class="control-group">
             <div class="control-label-row clickable" data-toggle="gridLinesToggle">
@@ -1015,15 +1089,10 @@
           <div class="button-row">
             <button id="downloadPng" type="button" class="primary">PNG</button>
             <button id="downloadSvg" type="button">SVG</button>
+            <button id="downloadSvgPoseSet" type="button" title="24 three-axis pose variations at 60° steps, exported as a batch of SVG files.">24× SVGs</button>
           </div>
           <p class="hint">
             Current pose, lengths, style, and background.
-          </p>
-          <div class="button-row" style="margin-top: 0.5rem;">
-            <button id="downloadSvgPoseSet" type="button">Export 24 pose variations (SVG)</button>
-          </div>
-          <p class="hint">
-            24 three-axis variations at 60° steps — every pose differs on all three axes from every other. Deltas applied on top of the default pose.
           </p>
         </div>
       </div>
