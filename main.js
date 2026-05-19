@@ -1292,6 +1292,280 @@ function mountColorPresetsAndHex(colorInput) {
   });
 }
 
+/**
+ * Build a horizontal gradient-stop editor:
+ *   [+] [−]                                 [N stops]
+ *   ▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭ (gradient preview)
+ *      ◆     ◆        ◆       ◆ (stop markers, drag to move offset)
+ *   [swatch  hex  ▾]  offset: ●━━━━━━  0.42
+ *
+ * Stops are positioned at `offsets[i]` (0..1). The selected stop is shown below
+ * with its compact picker and an offset slider. Drag a marker to move its offset
+ * (clamped to [0,1]). + adds a stop at the midpoint between selected and next.
+ * − deletes the selected (must keep ≥ 1).
+ *
+ * onChange({ colors, offsets, count }) is fired after each edit. The caller
+ * mirrors the values into `state.*Colors`, `state.*StopOffsets`, `state.*ColorCount`.
+ */
+function createGradientStopEditor(opts) {
+  const onChange = opts.onChange || (() => {});
+  // Internal mutable state.
+  const colors = new Array(GRADIENT_MAX_STOPS).fill("#000000");
+  let offsets = [];
+  let count = 1;
+  let selectedIndex = 0;
+
+  // Container.
+  const root = document.createElement("div");
+  root.className = "gstop-editor";
+
+  // Top controls row.
+  const ctrlRow = document.createElement("div");
+  ctrlRow.className = "gstop-editor-controls";
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.textContent = "+";
+  addBtn.title = "Add stop";
+  const delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.textContent = "−";
+  delBtn.title = "Delete selected stop";
+  const countLabel = document.createElement("span");
+  countLabel.className = "gstop-count";
+  ctrlRow.appendChild(addBtn);
+  ctrlRow.appendChild(delBtn);
+  ctrlRow.appendChild(countLabel);
+  root.appendChild(ctrlRow);
+
+  // Strip + markers.
+  const stripWrap = document.createElement("div");
+  stripWrap.className = "gstop-strip-wrap";
+  const strip = document.createElement("div");
+  strip.className = "gstop-strip";
+  const stripFill = document.createElement("div");
+  stripFill.className = "gstop-strip-fill";
+  strip.appendChild(stripFill);
+  stripWrap.appendChild(strip);
+  const markersRow = document.createElement("div");
+  markersRow.className = "gstop-markers";
+  stripWrap.appendChild(markersRow);
+  root.appendChild(stripWrap);
+
+  // Selected-stop compact picker (color input + hex + palette popover).
+  const selectedRow = document.createElement("div");
+  selectedRow.className = "gstop-selected-row";
+  const selectedPicker = document.createElement("input");
+  selectedPicker.type = "color";
+  selectedPicker.value = "#ffffff";
+  selectedRow.appendChild(selectedPicker);
+  root.appendChild(selectedRow);
+  // Wrap into the standard compact picker layout (1-row: swatch + hex + ▾).
+  mountColorPresetsAndHex(selectedPicker);
+
+  // Offset slider row for the selected stop.
+  const offsetRow = document.createElement("div");
+  offsetRow.className = "gstop-selected-row";
+  const offsetLabel = document.createElement("span");
+  offsetLabel.style.fontSize = "10px";
+  offsetLabel.style.color = "#888";
+  offsetLabel.textContent = "Offset";
+  const offsetInput = document.createElement("input");
+  offsetInput.type = "range";
+  offsetInput.min = "0";
+  offsetInput.max = "1";
+  offsetInput.step = "0.001";
+  offsetInput.className = "gstop-offset";
+  const offsetVal = document.createElement("input");
+  offsetVal.type = "number";
+  offsetVal.className = "gstop-offset-val";
+  offsetVal.min = "0";
+  offsetVal.max = "1";
+  offsetVal.step = "0.01";
+  offsetRow.appendChild(offsetLabel);
+  offsetRow.appendChild(offsetInput);
+  offsetRow.appendChild(offsetVal);
+  root.appendChild(offsetRow);
+
+  // --- Internal helpers ---
+
+  function emit() {
+    onChange({ colors: colors.slice(), offsets: offsets.slice(), count });
+  }
+
+  function clampSelected() {
+    if (selectedIndex >= count) selectedIndex = count - 1;
+    if (selectedIndex < 0) selectedIndex = 0;
+  }
+
+  function updateStripFill() {
+    if (count === 1) {
+      stripFill.style.background = colors[0];
+      return;
+    }
+    // Build a CSS linear-gradient that uses the current stop offsets.
+    const parts = [];
+    for (let i = 0; i < count; i++) {
+      parts.push(`${colors[i]} ${(offsets[i] * 100).toFixed(2)}%`);
+    }
+    stripFill.style.background = `linear-gradient(90deg, ${parts.join(", ")})`;
+  }
+
+  function updateMarkers() {
+    markersRow.innerHTML = "";
+    for (let i = 0; i < count; i++) {
+      const m = document.createElement("div");
+      m.className = "gstop-marker" + (i === selectedIndex ? " selected" : "");
+      m.style.left = `${(offsets[i] * 100).toFixed(2)}%`;
+      m.style.backgroundColor = colors[i];
+      m.dataset.idx = String(i);
+      markersRow.appendChild(m);
+      // Click selects (and the mousedown handler below starts drag).
+      m.addEventListener("mousedown", (e) => beginDrag(e, i));
+    }
+  }
+
+  function updateSelectedControls() {
+    clampSelected();
+    selectedPicker.value = colors[selectedIndex];
+    // Trigger the wrapped picker's hex sync.
+    selectedPicker.dispatchEvent(new Event("input", { bubbles: false }));
+    offsetInput.value = offsets[selectedIndex].toString();
+    offsetVal.value = offsets[selectedIndex].toFixed(2);
+    countLabel.textContent = `${count} stop${count === 1 ? "" : "s"}`;
+    delBtn.disabled = count <= 1;
+  }
+
+  function rebuild() {
+    updateStripFill();
+    updateMarkers();
+    updateSelectedControls();
+  }
+
+  // --- Drag handling ---
+
+  function beginDrag(downEvt, idx) {
+    downEvt.preventDefault();
+    selectedIndex = idx;
+    rebuild();
+    const rect = strip.getBoundingClientRect();
+    const onMove = (e) => {
+      const x = (e.clientX - rect.left) / rect.width;
+      const clamped = Math.max(0, Math.min(1, x));
+      offsets[idx] = clamped;
+      // Don't reorder — let stops cross freely. CSS gradient still renders correctly.
+      updateStripFill();
+      updateMarkers();
+      offsetInput.value = clamped.toString();
+      offsetVal.value = clamped.toFixed(2);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      // Sort the offsets+colors together for a clean post-drag state.
+      normalizeStopOrder();
+      rebuild();
+      emit();
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  /** Sort active stops by offset, keeping `selectedIndex` pointing at the same stop. */
+  function normalizeStopOrder() {
+    const items = [];
+    for (let i = 0; i < count; i++) {
+      items.push({ c: colors[i], o: offsets[i], wasSelected: i === selectedIndex });
+    }
+    items.sort((a, b) => a.o - b.o);
+    for (let i = 0; i < count; i++) {
+      colors[i] = items[i].c;
+      offsets[i] = items[i].o;
+      if (items[i].wasSelected) selectedIndex = i;
+    }
+  }
+
+  // --- Add / Delete / Color / Offset edit handlers ---
+
+  addBtn.addEventListener("click", () => {
+    if (count >= GRADIENT_MAX_STOPS) return;
+    // Insert at midpoint between selected and the next stop (by offset).
+    const sortedIdx = offsets.slice(0, count).map((o, i) => ({ o, i })).sort((a, b) => a.o - b.o);
+    let myPos = sortedIdx.findIndex((s) => s.i === selectedIndex);
+    if (myPos < 0) myPos = 0;
+    const here = sortedIdx[myPos].o;
+    const next = sortedIdx[myPos + 1] ? sortedIdx[myPos + 1].o : 1;
+    const newOffset = (here + next) / 2;
+    // Place the new stop after the selected one in the offset-sorted list.
+    colors[count] = colors[selectedIndex];
+    offsets[count] = newOffset;
+    count++;
+    normalizeStopOrder();
+    selectedIndex = offsets.slice(0, count).findIndex((o) => Math.abs(o - newOffset) < 1e-6);
+    rebuild();
+    emit();
+  });
+
+  delBtn.addEventListener("click", () => {
+    if (count <= 1) return;
+    // Remove the selected entry by shifting subsequent stops left.
+    for (let i = selectedIndex; i < count - 1; i++) {
+      colors[i] = colors[i + 1];
+      offsets[i] = offsets[i + 1];
+    }
+    count--;
+    clampSelected();
+    rebuild();
+    emit();
+  });
+
+  selectedPicker.addEventListener("input", () => {
+    colors[selectedIndex] = selectedPicker.value;
+    updateStripFill();
+    updateMarkers();
+    emit();
+  });
+
+  offsetInput.addEventListener("input", () => {
+    const v = parseFloat(offsetInput.value);
+    if (!Number.isFinite(v)) return;
+    offsets[selectedIndex] = Math.max(0, Math.min(1, v));
+    offsetVal.value = offsets[selectedIndex].toFixed(2);
+    updateStripFill();
+    updateMarkers();
+  });
+  offsetInput.addEventListener("change", () => {
+    normalizeStopOrder();
+    rebuild();
+    emit();
+  });
+  offsetVal.addEventListener("change", () => {
+    const v = parseFloat(offsetVal.value);
+    if (!Number.isFinite(v)) return;
+    offsets[selectedIndex] = Math.max(0, Math.min(1, v));
+    offsetInput.value = offsets[selectedIndex].toString();
+    normalizeStopOrder();
+    rebuild();
+    emit();
+  });
+
+  /** Public refresh: set stops from the outside (used when shortcuts change state). */
+  function setStops(srcColors, srcOffsets, srcCount) {
+    count = Math.max(1, Math.min(GRADIENT_MAX_STOPS, srcCount | 0));
+    const eff = effectiveStopOffsets(srcOffsets, count);
+    for (let i = 0; i < count; i++) {
+      colors[i] = (srcColors && srcColors[i]) || "#ffffff";
+      offsets[i] = eff[i];
+    }
+    clampSelected();
+    rebuild();
+  }
+
+  // Initial fill.
+  setStops(opts.initialColors, opts.initialOffsets, opts.initialCount || 1);
+
+  return { element: root, setStops };
+}
+
 function initAccordionPanels() {
   const panels = document.querySelectorAll("#controls details.panel-section");
   panels.forEach((details) => {

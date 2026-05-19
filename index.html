@@ -122,6 +122,14 @@
       appearance: textfield;
       -moz-appearance: textfield;
     }
+    /* Button living inline on a label row (right-aligned, like value fields). */
+    .control-label-row button.inline {
+      padding: 3px 8px;
+      font-size: 10px;
+      min-height: 0;
+      line-height: 1.2;
+      margin-left: auto;
+    }
     input[type="range"] {
       width: 100%;
       -webkit-appearance: none;
@@ -268,6 +276,145 @@
       border-radius: 2px;
     }
     .gradient-colors .control-group.hidden { display: none; }
+
+    /* === Unified gradient editor ============================================= */
+    .gstop-editor { margin-top: 4px; }
+    .gstop-strip-wrap {
+      position: relative;
+      margin: 4px 0 14px;
+      user-select: none;
+    }
+    .gstop-strip {
+      width: 100%;
+      height: 22px;
+      border: 1px solid #333;
+      border-radius: 2px;
+      background:
+        linear-gradient(45deg, #222 25%, transparent 25%) 0 0/8px 8px,
+        linear-gradient(-45deg, #222 25%, transparent 25%) 0 0/8px 8px,
+        linear-gradient(45deg, transparent 75%, #222 75%) 0 0/8px 8px,
+        linear-gradient(-45deg, transparent 75%, #222 75%) 0 0/8px 8px,
+        #0a0a0a;
+      position: relative;
+      overflow: hidden;
+    }
+    .gstop-strip-fill {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .gstop-markers {
+      position: relative;
+      height: 14px;
+      margin-top: 4px;
+    }
+    .gstop-marker {
+      position: absolute;
+      top: 0;
+      transform: translateX(-50%);
+      width: 14px;
+      height: 14px;
+      border: 1px solid #555;
+      border-radius: 2px;
+      cursor: grab;
+      box-shadow: 0 0 0 1px #050505;
+    }
+    .gstop-marker.selected {
+      border-color: #fff;
+      box-shadow: 0 0 0 1px #050505, 0 0 0 2px #EA6F53;
+      z-index: 2;
+    }
+    .gstop-marker:active { cursor: grabbing; }
+    .gstop-pointer-line {
+      position: absolute;
+      top: -22px;
+      width: 0;
+      height: 22px;
+      border-left: 1px solid #fff;
+      opacity: 0.6;
+      pointer-events: none;
+    }
+    .gstop-editor-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .gstop-editor-controls .gstop-count {
+      font-size: 10px;
+      color: #888;
+      font-variant-numeric: tabular-nums;
+      margin-left: auto;
+    }
+    .gstop-editor-controls button {
+      padding: 3px 6px;
+      font-size: 10px;
+      min-width: 24px;
+    }
+    .gstop-selected-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .gstop-selected-row .gstop-offset {
+      flex: 1 1 auto;
+    }
+    .gstop-offset-val {
+      width: 3.4em;
+      padding: 2px 4px;
+      font-size: 10px;
+      text-align: right;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #bbb;
+      font-variant-numeric: tabular-nums;
+      border-radius: 2px;
+    }
+
+    /* === Tooltip ============================================================ */
+    .tip {
+      display: inline-block;
+      width: 13px;
+      height: 13px;
+      margin-left: 6px;
+      border: 1px solid #555;
+      border-radius: 50%;
+      font-size: 9px;
+      line-height: 11px;
+      text-align: center;
+      color: #888;
+      cursor: help;
+      position: relative;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .tip::before { content: "i"; font-style: italic; font-family: serif; }
+    .tip:hover, .tip:focus { color: #fff; border-color: #aaa; }
+    .tip:hover::after, .tip:focus::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      right: 50%;
+      transform: translateX(50%);
+      width: 220px;
+      padding: 8px 10px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-style: normal;
+      font-size: 11px;
+      line-height: 1.45;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #ddd;
+      background: #181818;
+      border: 1px solid #333;
+      border-radius: 3px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+      z-index: 100;
+      text-align: left;
+      pointer-events: none;
+      white-space: normal;
+    }
     .section-divider {
       height: 1px;
       background: #222;
@@ -396,9 +543,7 @@
           <div class="control-group">
             <div class="control-label-row">
               <span>Fourth arm</span>
-            </div>
-            <div class="button-row">
-              <button id="fourthArmToggle" type="button">Off</button>
+              <button id="fourthArmToggle" type="button" class="inline">Off</button>
             </div>
           </div>
           <div id="fourthArmDetailControls" style="display: none;">
@@ -426,16 +571,15 @@
             </div>
           </div>
           <div class="control-group">
-            <div class="button-row">
-              <button id="resetArmLengths" type="button">Reset</button>
+            <div class="control-label-row">
+              <span>Arm lengths</span>
+              <button id="resetArmLengths" type="button" class="inline">Reset</button>
             </div>
           </div>
           <div class="control-group">
             <div class="control-label-row">
               <span>Auto Length</span>
-            </div>
-            <div class="button-row">
-              <button id="autoLengthToggle" type="button">On</button>
+              <button id="autoLengthToggle" type="button" class="inline">On</button>
             </div>
           </div>
           <div class="subsection-title">Mark</div>
@@ -469,9 +613,7 @@
           <div class="control-group">
             <div class="control-label-row">
               <span>Auto Rotate</span>
-            </div>
-            <div class="button-row">
-              <button id="autoRotateToggle" type="button">On</button>
+              <button id="autoRotateToggle" type="button" class="inline">On</button>
             </div>
           </div>
           <div class="control-group">
@@ -512,8 +654,9 @@
           </div>
           <p class="hint hint-tight">Local Euler rotation (Y-up, order XYZ). Note the three angles (and seed) to recreate a pose. Sliders are disabled while Auto Rotate is on.</p>
           <div class="control-group">
-            <div class="button-row">
-              <button id="poseReset" type="button">Reset</button>
+            <div class="control-label-row">
+              <span>Pose</span>
+              <button id="poseReset" type="button" class="inline">Reset</button>
             </div>
             <p class="hint hint-after-control">Zero rotation, default camera, and turns off Auto Rotate.</p>
           </div>
@@ -660,7 +803,7 @@
             <div class="control-group">
               <div class="control-label-row row-mt">
                 <span>Lasers inherit gradient</span>
-                <button id="bitGradientLasersInheritToggle" type="button" class="primary">On</button>
+                <button id="bitGradientLasersInheritToggle" type="button" class="primary inline">On</button>
               </div>
               <p class="hint hint-tight">When on, laser guides take the same gradient as the bit. Turn off to keep lasers in the solid Bit color.</p>
             </div>
@@ -789,7 +932,7 @@
               <p class="hint hint-tight">The canvas color fills first; with 1 color stop, the radial fades from Color 1 to this canvas color. Size follows the view diagonal; width/height scale the oval (1 = circle). Offsets are a fraction of canvas width/height.</p>
               <div class="control-label-row row-mt">
                 <span>Second radial</span>
-                <button type="button" id="gradientRadial2Toggle">Off</button>
+                <button type="button" id="gradientRadial2Toggle" class="inline">Off</button>
               </div>
               <div id="gradientRadial2DetailControls" class="control-group detail-nested" style="display: none;">
                 <div class="control-label-row">
@@ -855,8 +998,9 @@
         <div class="section-body">
           <div class="subsection-title">Laser guides</div>
           <div class="control-group">
-            <div class="button-row">
-              <button id="laserGuidesToggle" type="button">On</button>
+            <div class="control-label-row">
+              <span>Show lasers</span>
+              <button id="laserGuidesToggle" type="button" class="inline">On</button>
             </div>
           </div>
           <div class="control-group">
@@ -877,10 +1021,8 @@
           <div class="subsection-title">Plane grid</div>
           <div class="control-group">
             <div class="control-label-row">
-              <span>Plane grid</span>
-            </div>
-            <div class="button-row">
-              <button id="gridLinesToggle" type="button">Off</button>
+              <span>Show grid</span>
+              <button id="gridLinesToggle" type="button" class="inline">Off</button>
             </div>
           </div>
           <div id="planeGridDetailControls" style="display: none;">
